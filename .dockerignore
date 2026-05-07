@@ -1,0 +1,78 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker / k8s manifests (not needed inside the image)
+Dockerfile
+.dockerignore
+*.yaml
+*.yml
+
+# Docs / license
+LICENSE
+README.md
+*.md
+
+# Python byte-code & caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test & coverage caches
+tests/
+pytest.ini
+run_tests.py
+requirements-test.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Secrets / local environment
+.env
+.env.*
+*.local.env
+
+# Telethon session files (must be provisioned at runtime, not baked in)
+*.session
+*.session-journal
+
+# Logs
+*.log
+
+# Sample / scratch data
+test.csv
+req.txt
