@@ -189,6 +189,6 @@ class ConfigHandler:
 
 **QR Code Backup:**
 • `/get_qr_backup` - Get current QR backup data
-• `/set_qr_backup <qr_code>` - Set QR backup data for replication
+• `/set_qr_backup <qr_code>` - Set GroupHelp backup QR data for `.importbackup`
 
 When a new group is created without specifying users, all configured default users will be automatically added."""

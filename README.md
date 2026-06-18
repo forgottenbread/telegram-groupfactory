@@ -7,7 +7,7 @@ A Telegram bot for managing user groups with MongoDB backend and admin-only conf
 - ✅ Create and manage Telegram groups with default user lists
 - ✅ Admin-only configuration (requires STAFF_CHAT_ID)
 - ✅ User management with MongoDB storage
-- ✅ QR code backup for session replication
+- ✅ GroupHelp settings backup QR storage for `.importbackup`
 - ✅ Interactive admin role selection for group creators
 - ✅ Modular architecture with separation of concerns
 - ✅ Telegram bot integration using Telethon
@@ -74,8 +74,8 @@ docker run telegram-groupfactory
 /admin_add_users <id1> <id2> ...  - Add users to default list
 /admin_remove_users <id1> <id2>   - Remove users from default list
 /admin_get_users                  - Show current default users
-/admin_set_qr <qr_code>           - Store QR backup data
-/admin_get_qr                     - Retrieve QR backup data
+/admin_set_qr <qr_code>           - Store GroupHelp backup QR data
+/admin_get_qr                     - Retrieve GroupHelp backup QR data
 ```
 
 ### User Commands
@@ -95,4 +95,3 @@ docker run telegram-groupfactory
 - `/user <user_id>` - Get user information
 - `/add_user <user_id> <username> <name>` - Add a new user
 - `/delete_user <user_id>` - Delete a user
-

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The telegram-groupfactory bot now has **admin-only configuration** where all sensitive operations (adding/modifying users, setting QR backups) can ONLY be executed from the designated admin chat (STAFF_CHAT_ID).
+The telegram-groupfactory bot now has **admin-only configuration** where configuration operations (adding/modifying users, setting GroupHelp QR backups) can ONLY be executed from the designated admin chat (STAFF_CHAT_ID).
 
 ## Key Features
 
@@ -25,10 +25,10 @@ The following commands can ONLY be run from the admin chat:
 /admin_remove_users <id1> <id2>   - Remove users from default list
 ```
 
-#### QR Code Backup
+#### GroupHelp QR Code Backup
 ```
-/admin_get_qr                     - Retrieve QR backup data
-/admin_set_qr <qr_code>           - Store QR backup data for replication
+/admin_get_qr                     - Retrieve GroupHelp backup QR data
+/admin_set_qr <qr_code>           - Store GroupHelp backup QR data for `.importbackup`
 ```
 
 #### Help
@@ -81,8 +81,8 @@ New class `AdminHandler` with methods:
 - `handle_add_to_default_users(chat_id, user_ids)` - Add users (admin only)
 - `handle_remove_from_default_users(chat_id, user_ids)` - Remove users (admin only)
 - `handle_add_user_to_db(chat_id, username)` - Add user (admin only)
-- `handle_get_qr_backup(chat_id)` - Get QR backup (admin only)
-- `handle_set_qr_backup(chat_id, qr_data)` - Set QR backup (admin only)
+- `handle_get_qr_backup(chat_id)` - Get GroupHelp QR backup (admin only)
+- `handle_set_qr_backup(chat_id, qr_data)` - Set GroupHelp QR backup (admin only)
 - `handle_admin_help(chat_id)` - Show admin help (admin only)
 
 ### Main Application Updates (`src/main.py`)
@@ -133,7 +133,7 @@ User: [clicks "Yes, I want to be full admin"]
 Bot: Set as ✅ Full Group Admin - Confirmed!
 ```
 
-## Security Features
+## Access Control Features
 
 1. **Chat-Level Access Control** - Only STAFF_CHAT_ID can execute admin commands
 2. **Database Persistence** - All preferences stored in MongoDB
@@ -162,7 +162,7 @@ Stores per-user admin preferences:
 ```
 
 ### `ghconfig` Collection
-Stores QR backup data:
+Stores GroupHelp backup QR data:
 ```json
 {
   "key": "qr_backup_data",
@@ -212,7 +212,7 @@ MONGODB_COLLECTION=ghconfig
 # Can retrieve with: get_user_admin_role(user_id)
 ```
 
-### Test QR Backup
+### Test GroupHelp QR Backup
 ```bash
 # In admin chat:
 /admin_set_qr myqrcode123
@@ -220,6 +220,9 @@ MONGODB_COLLECTION=ghconfig
 
 /admin_get_qr
 # 📊 Current QR Backup Data: myqrcode123
+
+# In the target group:
+.importbackup myqrcode123
 ```
 
 ## Future Enhancements

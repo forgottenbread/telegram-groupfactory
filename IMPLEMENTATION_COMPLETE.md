@@ -4,7 +4,7 @@
 
 ### Overview
 The telegram-groupfactory bot now has a complete **admin-only configuration system** where:
-1. All sensitive operations are restricted to the admin chat (STAFF_CHAT_ID)
+1. Configuration operations are restricted to the admin chat (STAFF_CHAT_ID)
 2. Users are prompted with inline buttons to choose their admin role when creating groups
 3. All preferences and configurations are persisted in MongoDB
 
@@ -55,9 +55,9 @@ The telegram-groupfactory bot now has a complete **admin-only configuration syst
 ✅ Error message returned for unauthorized access
 ✅ No partial execution of admin operations
 
-### Data Protection
+### Data Storage
 ✅ User admin roles stored in separate MongoDB collection
-✅ QR backup data stored encrypted in database
+✅ GroupHelp backup QR data stored in database
 ✅ Default user list stored separately from user data
 
 ---
@@ -71,8 +71,8 @@ The telegram-groupfactory bot now has a complete **admin-only configuration syst
 /admin_set_users <id1> <id2> ...   - Replace defaults (admin only)
 /admin_add_users <id1> <id2> ...   - Append users (admin only)
 /admin_remove_users <id1> <id2>    - Remove users (admin only)
-/admin_get_qr                      - Get QR data (admin only)
-/admin_set_qr <qr_code>            - Set QR data (admin only)
+/admin_get_qr                      - Get GroupHelp QR data (admin only)
+/admin_set_qr <qr_code>            - Set GroupHelp QR data (admin only)
 /admin_help                        - Admin help (admin only)
 ```
 
@@ -92,7 +92,7 @@ The telegram-groupfactory bot now has a complete **admin-only configuration syst
 ### 3. Database Collections
 ✅ `group_config` - Stores default user list
 ✅ `user_admin_roles` - Stores per-user admin preferences
-✅ `ghconfig` - Stores QR backup data
+✅ `ghconfig` - Stores GroupHelp QR backup data
 
 ---
 
@@ -122,9 +122,9 @@ The telegram-groupfactory bot now has a complete **admin-only configuration syst
 - ✅ Can add to default list (admin only)
 - ✅ Can remove from default list (admin only)
 
-### QR Backup
-- ✅ Can set QR data (admin only)
-- ✅ Can get QR data (admin only)
+### GroupHelp QR Backup
+- ✅ Can set GroupHelp QR data (admin only)
+- ✅ Can get GroupHelp QR data (admin only)
 
 ### Group Creation
 - ✅ Group creation shows inline buttons

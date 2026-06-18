@@ -252,10 +252,10 @@ class AdminHandler:
 
 **QR Code Backup:**
 • `/admin_get_qr` - Get current QR backup data
-• `/admin_set_qr <qr_code>` - Set QR backup data
+• `/admin_set_qr <qr_code>` - Set GroupHelp backup QR data
 
 **Notes:**
 ✓ All admin commands work ONLY from the admin chat
 ✓ Users will be automatically added to new groups
-✓ QR backup data is used for session replication
+✓ QR backup data is used with GroupHelp `.importbackup`
 ✓ All config changes are stored in MongoDB"""
