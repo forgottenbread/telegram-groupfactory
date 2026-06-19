@@ -18,20 +18,27 @@ The following commands can ONLY be run from the admin chat:
 
 #### User Management
 ```
-/admin_add_user <username>        - Add new user to database
+/admin_add_user <username_or_id:username> - Add new user to database
 /admin_add_user                   - Add a forwarded user to database
 /admin_get_users                  - View default users list
-/admin_set_users <id_or_username> ...  - Replace entire default users list
-/admin_add_users <id_or_username> ...  - Add users to default list
+/admin_set_users <id_or_username_or_id:username> ...  - Replace entire default users list
+/admin_add_users <id_or_username_or_id:username> ...  - Add users to default list
 /admin_add_users                  - Add a forwarded user to default list
-/admin_remove_users <id_or_username>   - Remove users from default list
+/admin_remove_users <id_or_username_or_id:username>   - Remove users from default list
 ```
 
 #### GroupHelp QR Code Backup
 ```
 /admin_get_qr                     - Retrieve GroupHelp backup QR data
-/admin_set_qr <qr_payload>        - Store GroupHelp backup payload rendered as a QR image for `.importbackup`
-/admin_set_qr                     - Wait for a forwarded `.importbackup` QR image and decode it
+/admin_get_qr <qr_group>          - Retrieve GroupHelp backup QR data for a named config
+/admin_set_qr <qr_payload>        - Store default GroupHelp backup payload
+/admin_set_qr <qr_group> <payload> - Store named GroupHelp backup payload
+/admin_set_qr                     - Wait for a forwarded `.importbackup` QR image for default
+/admin_set_qr_group <qr_group>    - Wait for a forwarded `.importbackup` QR image for a named config
+/admin_qr_groups [qr_group]       - List QR configs and assigned Telegram groups
+/admin_qr_group_add <qr_group> <group_id> ... - Assign groups to QR config
+/admin_qr_group_remove <group_id> ... - Remove QR config assignment
+/admin_sync_qr [qr_group|all]     - Send stored `.importbackup` QR to owned assigned groups
 ```
 
 #### Help
@@ -121,12 +128,12 @@ Bot: ✅ Default users updated successfully:
   • bob (ID: 0987654321)
 
 Admin: /admin_set_qr 0001a8ac0123456789abcdef...
-Bot: ✅ QR backup data updated successfully!
+Bot: ✅ QR backup data for `default` updated successfully!
 
 Admin: /admin_set_qr
-Bot: 📷 Forward the original GroupHelp QR image message here.
+Bot: 📷 Forward the original GroupHelp QR image message for `default` here.
 Admin: forwards original `.importbackup` QR image message
-Bot: ✅ QR backup image decoded and stored successfully!
+Bot: ✅ QR backup image for `default` decoded and stored successfully!
 ```
 
 ### User Usage (any chat)
@@ -224,10 +231,10 @@ MONGODB_COLLECTION=ghconfig
 ```bash
 # In admin chat:
 /admin_set_qr new_390530c569ec8902a6cbd8482d51d70d2857d4a0
-# ✅ QR backup data updated successfully!
+# ✅ QR backup data for `default` updated successfully!
 
 /admin_get_qr
-# 📊 Current QR Backup Data: new_390530c569ec8902a6cbd8482d51d70d2857d4a0
+# 📊 Current QR Backup Data for `default`: new_390530c569ec8902a6cbd8482d51d70d2857d4a0
 
 # During !newgrp, GroupFactory sends the payload as a QR image with:
 .importbackup

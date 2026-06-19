@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uvicorn
 from telethon import TelegramClient, events, types
-from src.config import load_config
+from src.config import DEFAULT_QR_GROUP, load_config
 from src.services.mongodb_service import MongoDBService
 from src.services.user_service import UserService
 from src.services.group_service import GroupService
@@ -54,6 +54,7 @@ async def main():
     group_conversations = {}
     qr_import_sessions = {}
     user_import_sessions = {}
+    background_tasks = {"grouphelp_qr_sync": None}
 
     async def create_group_from_staff_flow(event, name: str, description: str):
         response = await group_handler.handle_create_group(
@@ -79,7 +80,7 @@ async def main():
         mime_type = getattr(document, "mime_type", "") if document else ""
         return mime_type.startswith("image/")
 
-    async def handle_forwarded_qr_import(event, raw_text: str) -> str:
+    async def handle_forwarded_qr_import(event, raw_text: str, qr_group: str = DEFAULT_QR_GROUP) -> str:
         message = event.message
         if not message.fwd_from:
             return "❌ Please forward the original GroupHelp QR image message. Do not upload or paste it manually."
@@ -92,7 +93,7 @@ async def main():
         if not image_bytes:
             return "❌ Could not download the forwarded QR image."
 
-        return await admin_handler.handle_set_qr_backup_from_image(event.chat_id, image_bytes)
+        return await admin_handler.handle_set_qr_backup_from_image(event.chat_id, image_bytes, qr_group=qr_group)
 
     async def handle_forwarded_user_import(event, add_to_defaults: bool) -> str:
         message = event.message
@@ -175,7 +176,11 @@ async def main():
                     if session["chat_id"] != chat_id:
                         return
 
-                    response = await handle_forwarded_qr_import(event, raw_text)
+                    response = await handle_forwarded_qr_import(
+                        event,
+                        raw_text,
+                        qr_group=session.get("qr_group", DEFAULT_QR_GROUP),
+                    )
                     if response.startswith("✅"):
                         qr_import_sessions.pop(sender_id, None)
                     await event.respond(response)
@@ -282,7 +287,7 @@ async def main():
                     response = await admin_handler.handle_set_default_users(chat_id, parts[1:])
                     await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_set_users <id_or_username1> <id_or_username2> ...`")
+                    await event.respond("❌ Please provide at least one user ID, username, or id:username pair.\n\nUsage: `/admin_set_users <id_or_username_or_id:username> ...`")
             
             elif text.startswith('/admin_add_users'):
                 parts = text.split()
@@ -312,7 +317,7 @@ async def main():
                     response = await admin_handler.handle_remove_from_default_users(chat_id, parts[1:])
                     await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_remove_users <id_or_username1> <id_or_username2> ...`")
+                    await event.respond("❌ Please provide at least one user ID, username, or id:username pair.\n\nUsage: `/admin_remove_users <id_or_username_or_id:username> ...`")
             
             elif text.startswith('/admin_add_user'):
                 parts = text.split(maxsplit=1)
@@ -338,14 +343,101 @@ async def main():
                         )
             
             elif text.startswith('/admin_get_qr'):
-                response = await admin_handler.handle_get_qr_backup(chat_id)
+                parts = text.split(maxsplit=1)
+                qr_group = parts[1].strip() if len(parts) > 1 else DEFAULT_QR_GROUP
+                response = await admin_handler.handle_get_qr_backup(chat_id, qr_group=qr_group)
                 await event.respond(response)
-            
-            elif text.startswith('/admin_set_qr'):
+
+            elif text.startswith('/admin_sync_qr'):
+                is_admin, error = admin_handler.verify_access(chat_id)
+                if not is_admin:
+                    await event.respond(error)
+                else:
+                    current_task = background_tasks.get("grouphelp_qr_sync")
+                    if current_task and not current_task.done():
+                        await event.respond("ℹ️ GroupHelp QR sync is already running.")
+                    else:
+                        parts = text.split(maxsplit=1)
+                        sync_group = parts[1].strip().lower() if len(parts) > 1 else DEFAULT_QR_GROUP
+
+                        async def send_sync_status(message: str):
+                            return await client.send_message(chat_id, message)
+
+                        async def run_grouphelp_qr_sync():
+                            try:
+                                if sync_group == "all":
+                                    await group_service.sync_all_grouphelp_qr_groups(
+                                        status_callback=send_sync_status,
+                                        delay_seconds=30,
+                                    )
+                                else:
+                                    await group_service.sync_grouphelp_qr_to_owned_groups(
+                                        status_callback=send_sync_status,
+                                        delay_seconds=30,
+                                        qr_group=sync_group,
+                                    )
+                            except Exception as e:
+                                logger.error(f"GroupHelp QR sync task failed: {e}")
+                                await client.send_message(chat_id, f"❌ GroupHelp QR sync failed: {e}")
+                            finally:
+                                background_tasks["grouphelp_qr_sync"] = None
+
+                        background_tasks["grouphelp_qr_sync"] = asyncio.create_task(
+                            run_grouphelp_qr_sync(),
+                            name="grouphelp-qr-sync",
+                        )
+                        await event.respond(f"✅ GroupHelp QR sync `{sync_group}` started in background.")
+
+            elif text.startswith('/admin_qr_group_add'):
+                parts = text.split()
+                if len(parts) > 2:
+                    response = await admin_handler.handle_assign_qr_group(chat_id, parts[1], parts[2:])
+                    await event.respond(response)
+                else:
+                    await event.respond("❌ Usage: `/admin_qr_group_add <qr_group> <telegram_group_id> ...`")
+
+            elif text.startswith('/admin_qr_group_remove'):
+                parts = text.split()
+                if len(parts) > 1:
+                    response = await admin_handler.handle_remove_qr_group_assignment(chat_id, parts[1:])
+                    await event.respond(response)
+                else:
+                    await event.respond("❌ Usage: `/admin_qr_group_remove <telegram_group_id> ...`")
+
+            elif text.startswith('/admin_qr_groups'):
+                parts = text.split(maxsplit=1)
+                qr_group = parts[1].strip() if len(parts) > 1 else None
+                response = await admin_handler.handle_list_qr_groups(chat_id, qr_group=qr_group)
+                await event.respond(response)
+
+            elif text.startswith('/admin_set_qr_group'):
                 parts = text.split(maxsplit=1)
                 if len(parts) > 1:
-                    qr_data = parts[1].strip()
-                    response = await admin_handler.handle_set_qr_backup(chat_id, qr_data)
+                    is_admin, error = admin_handler.verify_access(chat_id)
+                    if not is_admin:
+                        await event.respond(error)
+                    else:
+                        qr_group = parts[1].strip()
+                        qr_import_sessions[sender_id] = {"chat_id": chat_id, "qr_group": qr_group}
+                        user_import_sessions.pop(sender_id, None)
+                        await event.respond(
+                            f"📷 Forward the original GroupHelp QR image message for `{qr_group}` here.\n\n"
+                            "It must be a forwarded image message with `.importbackup` as its caption/body. "
+                            "Send `!cancel` to abort."
+                        )
+                else:
+                    await event.respond("❌ Usage: `/admin_set_qr_group <qr_group>`")
+            
+            elif text.startswith('/admin_set_qr'):
+                parts = text.split(maxsplit=2)
+                if len(parts) > 1:
+                    if len(parts) > 2:
+                        qr_group = parts[1].strip()
+                        qr_data = parts[2].strip()
+                    else:
+                        qr_group = DEFAULT_QR_GROUP
+                        qr_data = parts[1].strip()
+                    response = await admin_handler.handle_set_qr_backup(chat_id, qr_data, qr_group=qr_group)
                     qr_import_sessions.pop(sender_id, None)
                     user_import_sessions.pop(sender_id, None)
                     await event.respond(response)
@@ -354,10 +446,10 @@ async def main():
                     if not is_admin:
                         await event.respond(error)
                     else:
-                        qr_import_sessions[sender_id] = {"chat_id": chat_id}
+                        qr_import_sessions[sender_id] = {"chat_id": chat_id, "qr_group": DEFAULT_QR_GROUP}
                         user_import_sessions.pop(sender_id, None)
                         await event.respond(
-                            "📷 Forward the original GroupHelp QR image message here.\n\n"
+                            "📷 Forward the original GroupHelp QR image message for `default` here.\n\n"
                             "It must be a forwarded image message with `.importbackup` as its caption/body. "
                             "Send `!cancel` to abort."
                         )
@@ -456,15 +548,20 @@ async def main():
 
 **Admin Commands (Admin Chat Only):**
 • `/admin_get_users` - Show default group users
-• `/admin_set_users <id_or_username> ...` - Set default users
-• `/admin_add_users <id_or_username> ...` - Add users to default list
+• `/admin_set_users <id_or_username_or_id:username> ...` - Set default users
+• `/admin_add_users <id_or_username_or_id:username> ...` - Add users to default list
 • `/admin_add_users` - Add a forwarded user to default list
-• `/admin_remove_users <id_or_username> ...` - Remove users from default list
-• `/admin_add_user <username>` - Add new user to database
+• `/admin_remove_users <id_or_username_or_id:username> ...` - Remove users from default list
+• `/admin_add_user <username_or_id:username>` - Add new user to database
 • `/admin_add_user` - Add a forwarded user to database
-• `/admin_get_qr` - Get QR backup data
-• `/admin_set_qr <qr_payload>` - Set QR backup data directly
-• `/admin_set_qr` - Decode a forwarded `.importbackup` QR image
+• `/admin_get_qr [qr_group]` - Get QR backup data
+• `/admin_set_qr [qr_group] <qr_payload>` - Set QR backup data directly
+• `/admin_set_qr` - Decode a forwarded `.importbackup` QR image for `default`
+• `/admin_set_qr_group <qr_group>` - Decode a forwarded `.importbackup` QR image for a QR group
+• `/admin_qr_groups [qr_group]` - List QR groups and assignments
+• `/admin_qr_group_add <qr_group> <telegram_group_id> ...` - Assign groups to QR config
+• `/admin_qr_group_remove <telegram_group_id> ...` - Remove QR assignments
+• `/admin_sync_qr [qr_group|all]` - Send stored `.importbackup` QR to owned assigned groups
 • `/admin_help` - Show admin command help"""
                 await event.respond(help_text)
                 

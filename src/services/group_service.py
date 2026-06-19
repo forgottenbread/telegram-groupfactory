@@ -7,7 +7,14 @@ from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedEr
 from telethon.tl.functions.channels import CreateChannelRequest, InviteToChannelRequest
 
 from src.services.mongodb_service import MongoDBService
-from src.config import get_default_group_users, get_qr_data
+from src.config import (
+    DEFAULT_QR_GROUP,
+    get_default_group_users,
+    get_qr_data,
+    get_qr_group_assignments,
+    list_qr_groups,
+    normalize_qr_group_name,
+)
 from src.utils.qr_backup import build_qr_image
 
 logger = logging.getLogger(__name__)
@@ -93,6 +100,30 @@ class GroupService:
             logger.warning(f"Failed to export invite link: {e}")
             return None
 
+    def _is_owned_group_dialog(self, dialog) -> bool:
+        entity = getattr(dialog, "entity", None)
+        if not entity or not getattr(dialog, "is_group", False):
+            return False
+        if getattr(entity, "broadcast", False):
+            return False
+        return bool(getattr(entity, "creator", False))
+
+    def _dialog_assignment_keys(self, dialog) -> List[str]:
+        keys = {str(getattr(dialog, "id", ""))}
+        entity = getattr(dialog, "entity", None)
+        entity_id = getattr(entity, "id", None)
+        if entity_id is not None:
+            keys.add(str(entity_id))
+            keys.add(f"-100{entity_id}")
+        return [key for key in keys if key]
+
+    def _dialog_assignment_group(self, dialog, assignments: dict) -> Optional[str]:
+        for key in self._dialog_assignment_keys(dialog):
+            assignment = assignments.get(key)
+            if assignment:
+                return assignment.get("group")
+        return None
+
     def _user_label(self, user) -> str:
         if user.username:
             return f"@{user.username}"
@@ -107,12 +138,11 @@ class GroupService:
             self.mongo_service.save_user(user)
 
     async def _resolve_input_user(self, user):
-        if user.access_hash:
-            return types.InputUser(user.id, user.access_hash)
-
         references = []
         if user.username:
             references.append(user.username)
+        if user.access_hash:
+            references.append(types.InputUser(user.id, user.access_hash))
         references.append(user.id)
 
         last_error = None
@@ -128,7 +158,7 @@ class GroupService:
             except ValueError as e:
                 last_error = e
 
-        if not user.username:
+        if not user.username and not user.access_hash:
             raise ValueError(
                 "numeric ID has no stored access_hash. Add this user by @username "
                 "or use /admin_add_user or /admin_add_users with no args and "
@@ -292,6 +322,148 @@ class GroupService:
         except Exception as e:
             logger.error(f"Error creating group '{group_name}': {e}")
             return None
+
+    async def sync_grouphelp_qr_to_owned_groups(
+        self,
+        status_callback: Optional[StatusCallback] = None,
+        delay_seconds: int = 30,
+        qr_group: str = DEFAULT_QR_GROUP,
+    ) -> dict:
+        """Send stored GroupHelp QR backup to every group owned by the userbot."""
+        if not self.client:
+            logger.error("Telegram client not initialized")
+            return {
+                "matched": 0,
+                "sent": 0,
+                "failed": 0,
+                "skipped": 0,
+                "errors": ["Telegram client not initialized"],
+            }
+
+        group = normalize_qr_group_name(qr_group)
+        qr_data = get_qr_data(group)
+        if not qr_data:
+            await self._notify(status_callback, f"❌ No GroupHelp QR backup data configured for `{group}`. Use `/admin_set_qr {group} <qr_payload>`.")
+            return {
+                "matched": 0,
+                "sent": 0,
+                "failed": 0,
+                "skipped": 0,
+                "errors": [f"No GroupHelp QR backup data configured for {group}"],
+            }
+
+        sent = 0
+        failed = 0
+        skipped = 0
+        errors = []
+        owned_groups = []
+        assignments = get_qr_group_assignments()
+
+        async for dialog in self.client.iter_dialogs():
+            if not self._is_owned_group_dialog(dialog):
+                continue
+            assignment_group = self._dialog_assignment_group(dialog, assignments)
+            if group == DEFAULT_QR_GROUP:
+                if assignment_group not in (None, DEFAULT_QR_GROUP):
+                    skipped += 1
+                    continue
+            elif assignment_group != group:
+                skipped += 1
+                continue
+            owned_groups.append(dialog)
+
+        matched = len(owned_groups)
+        if matched == 0:
+            await self._notify(status_callback, f"⚠️ No owned groups found for GroupHelp QR sync group `{group}`.")
+            return {
+                "matched": matched,
+                "sent": sent,
+                "failed": failed,
+                "skipped": skipped,
+                "errors": errors,
+            }
+
+        await self._notify(status_callback, f"🔄 Starting GroupHelp QR sync for `{group}` across {matched} owned groups...")
+
+        for index, dialog in enumerate(owned_groups):
+            group_name = getattr(dialog, "name", None) or getattr(dialog.entity, "title", None) or str(dialog.id)
+
+            try:
+                logger.info("Sending stored GroupHelp QR backup %s to owned group %s", group, group_name)
+                qr_image = build_qr_image(qr_data)
+                await self.client.send_file(
+                    dialog.entity,
+                    qr_image,
+                    caption=".importbackup",
+                    force_document=False,
+                )
+                sent += 1
+                await self._notify(
+                    status_callback,
+                    f"✅ Sent GroupHelp QR `{group}` to {group_name} ({index + 1}/{matched})",
+                )
+            except Exception as e:
+                failed += 1
+                error = f"{group_name}: {e}"
+                errors.append(error)
+                logger.error("Failed to send GroupHelp QR backup %s to %s: %s", group, group_name, e)
+                await self._notify(status_callback, f"⚠️ Failed to send GroupHelp QR `{group}` to {group_name}: {e}")
+
+            if index < matched - 1:
+                await asyncio.sleep(delay_seconds)
+
+        await self._notify(
+            status_callback,
+            f"✅ GroupHelp QR sync for `{group}` complete. Sent: {sent}, failed: {failed}, owned groups: {matched}.",
+        )
+
+        return {
+            "matched": matched,
+            "sent": sent,
+            "failed": failed,
+            "skipped": skipped,
+            "errors": errors,
+        }
+
+    async def sync_all_grouphelp_qr_groups(
+        self,
+        status_callback: Optional[StatusCallback] = None,
+        delay_seconds: int = 30,
+    ) -> dict:
+        """Sync every configured logical GroupHelp QR group sequentially."""
+        groups = list_qr_groups(include_assignments=True)
+        if DEFAULT_QR_GROUP not in groups:
+            groups.insert(0, DEFAULT_QR_GROUP)
+
+        totals = {
+            "groups": [],
+            "matched": 0,
+            "sent": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+        for index, group in enumerate(groups):
+            result = await self.sync_grouphelp_qr_to_owned_groups(
+                status_callback=status_callback,
+                delay_seconds=delay_seconds,
+                qr_group=group,
+            )
+            totals["groups"].append(group)
+            totals["matched"] += result.get("matched", 0)
+            totals["sent"] += result.get("sent", 0)
+            totals["failed"] += result.get("failed", 0)
+            totals["skipped"] += result.get("skipped", 0)
+            totals["errors"].extend(result.get("errors", []))
+            if index < len(groups) - 1:
+                await asyncio.sleep(delay_seconds if result.get("matched", 0) > 0 else 1)
+
+        await self._notify(
+            status_callback,
+            f"✅ All GroupHelp QR syncs complete. Groups: {len(groups)}, sent: {totals['sent']}, failed: {totals['failed']}.",
+        )
+        return totals
     
     async def add_users_to_group(self, group_id: str, user_ids: List[int]) -> bool:
         """Add users to an existing Telegram group"""

@@ -87,16 +87,21 @@ docker run telegram-groupfactory
 
 ### Admin Commands (Admin Chat Only)
 ```
-/admin_add_user <username>        - Add user to database
+/admin_add_user <username_or_id:username> - Add user to database
 /admin_add_user                   - Add a forwarded user to database
-/admin_set_users <id_or_username> ...  - Set default users for groups
-/admin_add_users <id_or_username> ...  - Add users to default list
+/admin_set_users <id_or_username_or_id:username> ...  - Set default users for groups
+/admin_add_users <id_or_username_or_id:username> ...  - Add users to default list
 /admin_add_users                  - Add a forwarded user to default list
-/admin_remove_users <id_or_username>   - Remove users from default list
+/admin_remove_users <id_or_username_or_id:username>   - Remove users from default list
 /admin_get_users                  - Show current default users
-/admin_set_qr <qr_payload>        - Store GroupHelp backup payload rendered as a QR image
-/admin_set_qr                     - Decode a forwarded `.importbackup` QR image
-/admin_get_qr                     - Retrieve GroupHelp backup QR data
+/admin_get_qr [qr_group]          - Retrieve GroupHelp backup QR data
+/admin_set_qr [qr_group] <payload> - Store GroupHelp backup payload
+/admin_set_qr                     - Decode forwarded QR image for default config
+/admin_set_qr_group <qr_group>    - Decode forwarded QR image for named config
+/admin_qr_groups [qr_group]       - List QR configs and assigned Telegram groups
+/admin_qr_group_add <qr_group> <group_id> ... - Assign groups to QR config
+/admin_qr_group_remove <group_id> ... - Remove QR config assignment
+/admin_sync_qr [qr_group|all]     - Send stored `.importbackup` QR to owned assigned groups
 ```
 
 ### Legacy User Commands
