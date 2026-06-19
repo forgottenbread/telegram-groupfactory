@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import re
 from typing import Awaitable, Callable, List, Optional
 
 from telethon import functions, types
@@ -20,6 +21,10 @@ from src.utils.qr_backup import build_qr_image
 logger = logging.getLogger(__name__)
 
 StatusCallback = Callable[[str], Awaitable[object]]
+GROUPHELP_IMPORT_STATUS_RE = re.compile(r"🔀\s*Importazione Backup", re.IGNORECASE)
+GROUPHELP_QR_DELETE_DELAY_SECONDS = 5
+GROUPHELP_IMPORT_CLEANUP_WINDOW_SECONDS = 30
+GROUPHELP_IMPORT_CLEANUP_POLL_SECONDS = 3
 
 class GroupService:
     """Service class for group creation and management"""
@@ -35,6 +40,90 @@ class GroupService:
         if status_callback:
             return await status_callback(message)
         return None
+
+    def _sent_message_ids(self, sent_message) -> List[int]:
+        if not sent_message:
+            return []
+        messages = sent_message if isinstance(sent_message, list) else [sent_message]
+        return [message.id for message in messages if getattr(message, "id", None)]
+
+    def _message_text(self, message) -> str:
+        return (
+            getattr(message, "raw_text", None)
+            or getattr(message, "text", None)
+            or getattr(message, "message", None)
+            or ""
+        )
+
+    def _is_grouphelp_import_status(self, message) -> bool:
+        return bool(GROUPHELP_IMPORT_STATUS_RE.search(self._message_text(message)))
+
+    async def _delete_messages_safely(self, target_group, message_ids: List[int], reason: str) -> int:
+        if not message_ids:
+            return 0
+        try:
+            await self.client.delete_messages(target_group, message_ids, revoke=True)
+            logger.info("Deleted %s message(s): %s", reason, message_ids)
+            return len(message_ids)
+        except Exception as e:
+            logger.warning("Failed to delete %s message(s) %s: %s", reason, message_ids, e)
+            return 0
+
+    async def _cleanup_grouphelp_import_artifacts(self, target_group, sent_message, qr_group: str):
+        sent_ids = self._sent_message_ids(sent_message)
+        min_message_id = min(sent_ids) if sent_ids else 0
+
+        await asyncio.sleep(GROUPHELP_QR_DELETE_DELAY_SECONDS)
+        await self._delete_messages_safely(target_group, sent_ids, "GroupHelp QR import")
+
+        deleted_status_ids = set()
+        deadline = asyncio.get_running_loop().time() + GROUPHELP_IMPORT_CLEANUP_WINDOW_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
+            status_ids = []
+            try:
+                async for message in self.client.iter_messages(target_group, limit=20):
+                    message_id = getattr(message, "id", None)
+                    if not message_id or message_id in deleted_status_ids:
+                        continue
+                    if min_message_id and message_id < min_message_id:
+                        continue
+                    if self._is_grouphelp_import_status(message):
+                        status_ids.append(message_id)
+            except Exception as e:
+                logger.warning("Failed to scan GroupHelp import status messages for %s: %s", qr_group, e)
+                return
+
+            if status_ids:
+                await self._delete_messages_safely(target_group, status_ids, "GroupHelp import status")
+                deleted_status_ids.update(status_ids)
+
+            await asyncio.sleep(GROUPHELP_IMPORT_CLEANUP_POLL_SECONDS)
+
+    def _log_background_task_result(self, task: asyncio.Task):
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning("Background GroupHelp cleanup failed: %s", e)
+
+    def _schedule_grouphelp_import_cleanup(self, target_group, sent_message, qr_group: str):
+        task = asyncio.create_task(
+            self._cleanup_grouphelp_import_artifacts(target_group, sent_message, qr_group),
+            name=f"grouphelp-import-cleanup-{qr_group}",
+        )
+        task.add_done_callback(self._log_background_task_result)
+        return task
+
+    async def _send_grouphelp_qr_import(self, target_group, qr_data: str, qr_group: str = DEFAULT_QR_GROUP):
+        qr_image = build_qr_image(qr_data)
+        sent_message = await self.client.send_file(
+            target_group,
+            qr_image,
+            caption=".importbackup",
+            force_document=False,
+        )
+        return self._schedule_grouphelp_import_cleanup(target_group, sent_message, qr_group)
 
     async def _edit_status(self, status_message, message: str):
         if hasattr(status_message, "edit"):
@@ -288,13 +377,7 @@ class GroupService:
             qr_data = get_qr_data()
             if qr_data:
                 logger.info("Sending GroupHelp QR backup import image")
-                qr_image = build_qr_image(qr_data)
-                await self.client.send_file(
-                    target_group,
-                    qr_image,
-                    caption=".importbackup",
-                    force_document=False,
-                )
+                await self._send_grouphelp_qr_import(target_group, qr_data)
                 qr_imported = True
                 if staff_chat_id:
                     await self.client.send_message(staff_chat_id, "✅ GroupHelp QR backup image sent to the new group.")
@@ -357,6 +440,7 @@ class GroupService:
         skipped = 0
         errors = []
         owned_groups = []
+        cleanup_tasks = []
         assignments = get_qr_group_assignments()
 
         async for dialog in self.client.iter_dialogs():
@@ -390,12 +474,8 @@ class GroupService:
 
             try:
                 logger.info("Sending stored GroupHelp QR backup %s to owned group %s", group, group_name)
-                qr_image = build_qr_image(qr_data)
-                await self.client.send_file(
-                    dialog.entity,
-                    qr_image,
-                    caption=".importbackup",
-                    force_document=False,
+                cleanup_tasks.append(
+                    await self._send_grouphelp_qr_import(dialog.entity, qr_data, qr_group=group)
                 )
                 sent += 1
                 await self._notify(
@@ -411,6 +491,9 @@ class GroupService:
 
             if index < matched - 1:
                 await asyncio.sleep(delay_seconds)
+
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
         await self._notify(
             status_callback,
