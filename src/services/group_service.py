@@ -8,6 +8,7 @@ from telethon.tl.functions.channels import CreateChannelRequest, InviteToChannel
 
 from src.services.mongodb_service import MongoDBService
 from src.config import get_default_group_users, get_qr_data
+from src.utils.qr_backup import build_qr_image
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,6 @@ class GroupService:
             logger.warning(f"Failed to export invite link: {e}")
             return None
 
-    def _build_importbackup_message(self, qr_data: str) -> str:
-        qr_data = qr_data.strip()
-        if qr_data.lower().startswith((".importbackup", "/importbackup")):
-            return qr_data
-        return f".importbackup {qr_data}"
-    
     async def create_group(
         self,
         group_name: str,
@@ -220,16 +215,19 @@ class GroupService:
             qr_imported = False
             qr_data = get_qr_data()
             if qr_data:
-                logger.info("Sending GroupHelp QR backup import command")
-                await self.client.send_message(
+                logger.info("Sending GroupHelp QR backup import image")
+                qr_image = build_qr_image(qr_data)
+                await self.client.send_file(
                     target_group,
-                    self._build_importbackup_message(qr_data),
+                    qr_image,
+                    caption=".importbackup",
+                    force_document=False,
                 )
                 qr_imported = True
                 if staff_chat_id:
-                    await self.client.send_message(staff_chat_id, "✅ GroupHelp QR backup import sent to the new group.")
+                    await self.client.send_message(staff_chat_id, "✅ GroupHelp QR backup image sent to the new group.")
             elif staff_chat_id:
-                await self.client.send_message(staff_chat_id, "⚠️ No GroupHelp QR backup data configured. Use `/admin_set_qr <qr_data>`.")
+                await self.client.send_message(staff_chat_id, "⚠️ No GroupHelp QR backup data configured. Use `/admin_set_qr <qr_payload>`.")
 
             invite_link = await self._export_invite_link(target_group)
             if staff_chat_id:

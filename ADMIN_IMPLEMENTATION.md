@@ -20,15 +20,16 @@ The following commands can ONLY be run from the admin chat:
 ```
 /admin_add_user <username>        - Add new user to database
 /admin_get_users                  - View default users list
-/admin_set_users <id1> <id2> ...  - Replace entire default users list
-/admin_add_users <id1> <id2> ...  - Add users to default list
-/admin_remove_users <id1> <id2>   - Remove users from default list
+/admin_set_users <id_or_username> ...  - Replace entire default users list
+/admin_add_users <id_or_username> ...  - Add users to default list
+/admin_remove_users <id_or_username>   - Remove users from default list
 ```
 
 #### GroupHelp QR Code Backup
 ```
 /admin_get_qr                     - Retrieve GroupHelp backup QR data
-/admin_set_qr <qr_code>           - Store GroupHelp backup QR data for `.importbackup`
+/admin_set_qr <qr_payload>        - Store GroupHelp backup payload rendered as a QR image for `.importbackup`
+/admin_set_qr                     - Wait for a forwarded `.importbackup` QR image and decode it
 ```
 
 #### Help
@@ -119,6 +120,11 @@ Bot: ✅ Default users updated successfully:
 
 Admin: /admin_set_qr 0001a8ac0123456789abcdef...
 Bot: ✅ QR backup data updated successfully!
+
+Admin: /admin_set_qr
+Bot: 📷 Forward the original GroupHelp QR image message here.
+Admin: forwards original `.importbackup` QR image message
+Bot: ✅ QR backup image decoded and stored successfully!
 ```
 
 ### User Usage (any chat)
@@ -215,14 +221,14 @@ MONGODB_COLLECTION=ghconfig
 ### Test GroupHelp QR Backup
 ```bash
 # In admin chat:
-/admin_set_qr myqrcode123
+/admin_set_qr new_390530c569ec8902a6cbd8482d51d70d2857d4a0
 # ✅ QR backup data updated successfully!
 
 /admin_get_qr
-# 📊 Current QR Backup Data: myqrcode123
+# 📊 Current QR Backup Data: new_390530c569ec8902a6cbd8482d51d70d2857d4a0
 
-# In the target group:
-.importbackup myqrcode123
+# During !newgrp, GroupFactory sends the payload as a QR image with:
+.importbackup
 ```
 
 ## Future Enhancements

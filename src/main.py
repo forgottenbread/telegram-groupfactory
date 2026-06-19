@@ -50,7 +50,9 @@ async def main():
         config['telegram']['api_hash']
     )
     group_service.set_client(client)
+    admin_handler.set_client(client)
     group_conversations = {}
+    qr_import_sessions = {}
 
     async def create_group_from_staff_flow(event, name: str, description: str):
         response = await group_handler.handle_create_group(
@@ -65,12 +67,37 @@ async def main():
 
     def is_staff_chat(chat_id: int) -> bool:
         return chat_id == staff_chat_id
+
+    def is_importbackup_body(raw_text: str) -> bool:
+        return (raw_text or "").strip().lower() in (".importbackup", "/importbackup")
+
+    def has_image_media(message) -> bool:
+        if getattr(message, "photo", None):
+            return True
+        document = getattr(message, "document", None)
+        mime_type = getattr(document, "mime_type", "") if document else ""
+        return mime_type.startswith("image/")
+
+    async def handle_forwarded_qr_import(event, raw_text: str) -> str:
+        message = event.message
+        if not message.fwd_from:
+            return "❌ Please forward the original GroupHelp QR image message. Do not upload or paste it manually."
+        if not is_importbackup_body(raw_text):
+            return "❌ Forwarded QR message must have `.importbackup` as its caption/body."
+        if not message.media or not has_image_media(message):
+            return "❌ Forwarded `.importbackup` message must contain a QR image."
+
+        image_bytes = await client.download_media(message, file=bytes)
+        if not image_bytes:
+            return "❌ Could not download the forwarded QR image."
+
+        return await admin_handler.handle_set_qr_backup_from_image(event.chat_id, image_bytes)
     
     @client.on(events.NewMessage())
     async def message_handler(event):
         """Handle incoming messages and route to appropriate handlers"""
         message = event.message
-        text = message.text or ""
+        text = getattr(message, "raw_text", None) or getattr(message, "text", None) or getattr(message, "message", "") or ""
         chat_id = event.chat_id
         sender_id = event.sender_id
         
@@ -100,11 +127,29 @@ async def main():
                     return
 
                 if lower_text == '!cancel':
+                    canceled = False
                     if sender_id in group_conversations:
                         del group_conversations[sender_id]
+                        canceled = True
+                    if sender_id in qr_import_sessions:
+                        del qr_import_sessions[sender_id]
+                        canceled = True
+
+                    if canceled:
                         await event.respond('🛑 Operation canceled.')
                     else:
                         await event.respond('❓ No active operation to cancel.')
+                    return
+
+                if sender_id in qr_import_sessions and not lower_text.startswith('/admin_set_qr'):
+                    session = qr_import_sessions[sender_id]
+                    if session["chat_id"] != chat_id:
+                        return
+
+                    response = await handle_forwarded_qr_import(event, raw_text)
+                    if response.startswith("✅"):
+                        qr_import_sessions.pop(sender_id, None)
+                    await event.respond(response)
                     return
 
                 if lower_text.startswith('!newgrp'):
@@ -186,43 +231,28 @@ async def main():
                 await event.respond(response)
             
             elif text.startswith('/admin_set_users'):
-                # Parse user IDs from command
                 parts = text.split()
                 if len(parts) > 1:
-                    try:
-                        user_ids = [int(uid) for uid in parts[1:]]
-                        response = await admin_handler.handle_set_default_users(chat_id, user_ids)
-                        await event.respond(response)
-                    except ValueError:
-                        await event.respond("❌ Invalid user IDs. Please provide numeric IDs.\n\nUsage: `/admin_set_users <user_id1> <user_id2> ...`")
+                    response = await admin_handler.handle_set_default_users(chat_id, parts[1:])
+                    await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID.\n\nUsage: `/admin_set_users <user_id1> <user_id2> ...`")
+                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_set_users <id_or_username1> <id_or_username2> ...`")
             
             elif text.startswith('/admin_add_users'):
-                # Parse user IDs from command
                 parts = text.split()
                 if len(parts) > 1:
-                    try:
-                        user_ids = [int(uid) for uid in parts[1:]]
-                        response = await admin_handler.handle_add_to_default_users(chat_id, user_ids)
-                        await event.respond(response)
-                    except ValueError:
-                        await event.respond("❌ Invalid user IDs. Please provide numeric IDs.\n\nUsage: `/admin_add_users <user_id1> <user_id2> ...`")
+                    response = await admin_handler.handle_add_to_default_users(chat_id, parts[1:])
+                    await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID.\n\nUsage: `/admin_add_users <user_id1> <user_id2> ...`")
+                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_add_users <id_or_username1> <id_or_username2> ...`")
             
             elif text.startswith('/admin_remove_users'):
-                # Parse user IDs from command
                 parts = text.split()
                 if len(parts) > 1:
-                    try:
-                        user_ids = [int(uid) for uid in parts[1:]]
-                        response = await admin_handler.handle_remove_from_default_users(chat_id, user_ids)
-                        await event.respond(response)
-                    except ValueError:
-                        await event.respond("❌ Invalid user IDs. Please provide numeric IDs.\n\nUsage: `/admin_remove_users <user_id1> <user_id2> ...`")
+                    response = await admin_handler.handle_remove_from_default_users(chat_id, parts[1:])
+                    await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID.\n\nUsage: `/admin_remove_users <user_id1> <user_id2> ...`")
+                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_remove_users <id_or_username1> <id_or_username2> ...`")
             
             elif text.startswith('/admin_add_user'):
                 # Parse username from command
@@ -239,14 +269,23 @@ async def main():
                 await event.respond(response)
             
             elif text.startswith('/admin_set_qr'):
-                # Parse QR data from command
                 parts = text.split(maxsplit=1)
                 if len(parts) > 1:
                     qr_data = parts[1].strip()
                     response = await admin_handler.handle_set_qr_backup(chat_id, qr_data)
+                    qr_import_sessions.pop(sender_id, None)
                     await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide QR backup data.\n\nUsage: `/admin_set_qr <qr_code>`")
+                    is_admin, error = admin_handler.verify_access(chat_id)
+                    if not is_admin:
+                        await event.respond(error)
+                    else:
+                        qr_import_sessions[sender_id] = {"chat_id": chat_id}
+                        await event.respond(
+                            "📷 Forward the original GroupHelp QR image message here.\n\n"
+                            "It must be a forwarded image message with `.importbackup` as its caption/body. "
+                            "Send `!cancel` to abort."
+                        )
             
             elif text.startswith('/admin_help'):
                 response = await admin_handler.handle_admin_help(chat_id)
@@ -342,12 +381,13 @@ async def main():
 
 **Admin Commands (Admin Chat Only):**
 • `/admin_get_users` - Show default group users
-• `/admin_set_users <id1> <id2>` - Set default users
-• `/admin_add_users <id1> <id2>` - Add users to default list
-• `/admin_remove_users <id1> <id2>` - Remove users from default list
+• `/admin_set_users <id_or_username> ...` - Set default users
+• `/admin_add_users <id_or_username> ...` - Add users to default list
+• `/admin_remove_users <id_or_username> ...` - Remove users from default list
 • `/admin_add_user <username>` - Add new user to database
 • `/admin_get_qr` - Get QR backup data
-• `/admin_set_qr <data>` - Set QR backup data
+• `/admin_set_qr <qr_payload>` - Set QR backup data directly
+• `/admin_set_qr` - Decode a forwarded `.importbackup` QR image
 • `/admin_help` - Show admin command help"""
                 await event.respond(help_text)
                 

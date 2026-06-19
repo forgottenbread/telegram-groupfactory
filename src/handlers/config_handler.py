@@ -163,7 +163,7 @@ class ConfigHandler:
             if qr_data:
                 return f"📊 Current QR Backup Data:\n`{qr_data}`"
             else:
-                return "📋 No QR backup data configured yet.\n\nUse `/set_qr_backup <qr_code>` to configure it."
+                return "📋 No QR backup data configured yet.\n\nUse `/set_qr_backup <qr_payload>` to configure it."
         except Exception as e:
             logger.error(f"Error getting QR backup: {e}")
             return f"❌ Error retrieving QR backup: {str(e)}"
@@ -172,7 +172,7 @@ class ConfigHandler:
         """Set QR backup data"""
         try:
             if not qr_data or len(qr_data.strip()) == 0:
-                return "❌ QR backup data cannot be empty.\n\nUsage: `/set_qr_backup <qr_code>`"
+                return "❌ QR backup data cannot be empty.\n\nUsage: `/set_qr_backup <qr_payload>`"
             
             if set_qr_backup_data(qr_data):
                 return f"✅ QR backup data updated successfully!\n\nData: `{qr_data}`"
@@ -194,6 +194,6 @@ class ConfigHandler:
 
 **QR Code Backup:**
 • `/get_qr_backup` - Get current QR backup data
-• `/set_qr_backup <qr_code>` - Set GroupHelp backup QR data for `.importbackup`
+• `/set_qr_backup <qr_payload>` - Set GroupHelp backup payload rendered as a QR image for `.importbackup`
 
 When a new group is created without specifying users, all configured default users will be automatically added."""
