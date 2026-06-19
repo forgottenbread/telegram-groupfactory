@@ -44,7 +44,7 @@ async def main():
     
     # Create Telegram client
     client = TelegramClient(
-        config['telegram']['session_file'],
+        config['telegram']['session'],
         config['telegram']['api_id'],
         config['telegram']['api_hash']
     )

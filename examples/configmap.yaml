@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegram-config
+  namespace: groupfactory
+  labels:
+    app.kubernetes.io/name: groupfactory
+data:
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  LOG_LEVEL: "INFO"
+  MONGODB_DATABASE: "imsuserbot"
+  MONGODB_COLLECTION: "ghconfig"
+  TELETHON_API_ID: "123456"
+  STAFF_CHAT_ID: "-1001234567890"
+  FACTORY_BOT_ID: "123456789"

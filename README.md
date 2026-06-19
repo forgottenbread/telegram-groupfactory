@@ -1,6 +1,6 @@
 # telegram-groupfactory
 
-A Telegram bot for managing user groups with MongoDB backend and admin-only configuration.
+A Telegram user API service for managing groups with MongoDB backend and admin-only configuration.
 
 ## Features
 
@@ -10,7 +10,7 @@ A Telegram bot for managing user groups with MongoDB backend and admin-only conf
 - ✅ GroupHelp settings backup QR storage for `.importbackup`
 - ✅ Interactive admin role selection for group creators
 - ✅ Modular architecture with separation of concerns
-- ✅ Telegram bot integration using Telethon
+- ✅ Telegram user API integration using Telethon
 
 ## Architecture
 
@@ -31,7 +31,6 @@ The application follows a modular architecture with the following components:
    ```
    TELETHON_API_ID=your_api_id
    TELETHON_API_HASH=your_api_hash
-   TELEGRAM_BOT_TOKEN=your_bot_token
    TELETHON_TOKEN=your_session_token
    
    MONGODB_URI=mongodb://localhost:27017
@@ -41,6 +40,15 @@ The application follows a modular architecture with the following components:
    STAFF_CHAT_ID=your_admin_chat_id
    FACTORY_BOT_ID=your_bot_id
    ```
+
+   Generate `TELETHON_TOKEN` with:
+   ```bash
+   TELETHON_API_ID=your_api_id TELETHON_API_HASH=your_api_hash \
+     python3 scripts/generate_telegram_session.py
+   ```
+
+   The script performs a Telegram user login and prints the `TELETHON_TOKEN`
+   value to store in the Kubernetes Secret.
 
 2. Install dependencies:
    ```bash

@@ -205,7 +205,6 @@ The telegram-groupfactory bot now has a complete **admin-only configuration syst
 # Telegram
 TELETHON_API_ID=your_api_id
 TELETHON_API_HASH=your_api_hash
-TELEGRAM_BOT_TOKEN=your_bot_token
 TELETHON_TOKEN=your_session_token
 
 # MongoDB

@@ -277,7 +277,6 @@ Make sure these are set in your `.env` file:
 ```bash
 TELETHON_API_ID=your_api_id
 TELETHON_API_HASH=your_api_hash
-TELEGRAM_BOT_TOKEN=your_bot_token
 TELETHON_TOKEN=your_session_token
 
 MONGODB_URI=mongodb://localhost:27017
@@ -328,7 +327,6 @@ services:
     environment:
       TELETHON_API_ID: ${TELETHON_API_ID}
       TELETHON_API_HASH: ${TELETHON_API_HASH}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELETHON_TOKEN: ${TELETHON_TOKEN}
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DATABASE: groupfactory

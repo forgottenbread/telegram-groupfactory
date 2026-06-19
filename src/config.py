@@ -2,11 +2,11 @@ import os
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 
 # Telegram configuration
 TELETHON_TOKEN = os.environ.get("TELETHON_TOKEN")
 TELETHON_API_HASH = os.environ.get("TELETHON_API_HASH")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELETHON_API_ID = int(os.environ.get("TELETHON_API_ID", 0))
 STAFF_CHAT_ID = int(os.environ.get("STAFF_CHAT_ID", 0))
 FACTORY_BOT_ID = int(os.environ.get("FACTORY_BOT_ID", 0))
@@ -18,6 +18,12 @@ MONGODB_COLLECTION = os.environ.get('MONGODB_COLLECTION', '')
 
 # Logging configuration
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
+
+def get_telegram_session():
+    """Return a Telethon session backed by TELETHON_TOKEN when configured."""
+    if TELETHON_TOKEN:
+        return StringSession(TELETHON_TOKEN)
+    return 'session'
 
 # MongoDB helper functions
 def get_mongo_client():
@@ -34,7 +40,7 @@ def get_telegram_client():
     """Create and return Telegram client"""
     try:
         client = TelegramClient(
-            'session',
+            get_telegram_session(),
             TELETHON_API_ID,
             TELETHON_API_HASH
         )
@@ -65,7 +71,7 @@ def load_config():
         'telegram': {
             'api_id': TELETHON_API_ID,
             'api_hash': TELETHON_API_HASH,
-            'bot_token': TELEGRAM_BOT_TOKEN,
+            'session': get_telegram_session(),
             'session_file': 'session',
             'staff_chat_id': STAFF_CHAT_ID,
             'factory_bot_id': FACTORY_BOT_ID
