@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uvicorn
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, types
 from src.config import load_config
 from src.services.mongodb_service import MongoDBService
 from src.services.user_service import UserService
@@ -53,6 +53,7 @@ async def main():
     admin_handler.set_client(client)
     group_conversations = {}
     qr_import_sessions = {}
+    user_import_sessions = {}
 
     async def create_group_from_staff_flow(event, name: str, description: str):
         response = await group_handler.handle_create_group(
@@ -92,6 +93,27 @@ async def main():
             return "❌ Could not download the forwarded QR image."
 
         return await admin_handler.handle_set_qr_backup_from_image(event.chat_id, image_bytes)
+
+    async def handle_forwarded_user_import(event, add_to_defaults: bool) -> str:
+        message = event.message
+        forward_info = getattr(message, "fwd_from", None)
+        if not forward_info:
+            return "❌ Please forward a message from the Telegram user. Do not paste a numeric ID."
+
+        from_id = getattr(forward_info, "from_id", None)
+        if not isinstance(from_id, types.PeerUser):
+            return "❌ Forwarded message must come from a Telegram user, not a channel/group or hidden sender."
+
+        try:
+            entity = await client.get_entity(from_id)
+        except Exception as e:
+            return f"❌ Could not resolve forwarded user entity: {e}"
+
+        return await admin_handler.handle_add_user_entity(
+            event.chat_id,
+            entity,
+            add_to_defaults=add_to_defaults,
+        )
     
     @client.on(events.NewMessage())
     async def message_handler(event):
@@ -134,6 +156,9 @@ async def main():
                     if sender_id in qr_import_sessions:
                         del qr_import_sessions[sender_id]
                         canceled = True
+                    if sender_id in user_import_sessions:
+                        del user_import_sessions[sender_id]
+                        canceled = True
 
                     if canceled:
                         await event.respond('🛑 Operation canceled.')
@@ -141,7 +166,11 @@ async def main():
                         await event.respond('❓ No active operation to cancel.')
                     return
 
-                if sender_id in qr_import_sessions and not lower_text.startswith('/admin_set_qr'):
+                if (
+                    sender_id in qr_import_sessions
+                    and not lower_text.startswith('/admin_set_qr')
+                    and (message.fwd_from or not raw_text.startswith('/'))
+                ):
                     session = qr_import_sessions[sender_id]
                     if session["chat_id"] != chat_id:
                         return
@@ -149,6 +178,23 @@ async def main():
                     response = await handle_forwarded_qr_import(event, raw_text)
                     if response.startswith("✅"):
                         qr_import_sessions.pop(sender_id, None)
+                    await event.respond(response)
+                    return
+
+                if (
+                    sender_id in user_import_sessions
+                    and (message.fwd_from or not raw_text.startswith('/'))
+                ):
+                    session = user_import_sessions[sender_id]
+                    if session["chat_id"] != chat_id:
+                        return
+
+                    response = await handle_forwarded_user_import(
+                        event,
+                        add_to_defaults=session["add_to_defaults"],
+                    )
+                    if response.startswith("✅"):
+                        user_import_sessions.pop(sender_id, None)
                     await event.respond(response)
                     return
 
@@ -242,9 +288,23 @@ async def main():
                 parts = text.split()
                 if len(parts) > 1:
                     response = await admin_handler.handle_add_to_default_users(chat_id, parts[1:])
+                    user_import_sessions.pop(sender_id, None)
+                    qr_import_sessions.pop(sender_id, None)
                     await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_add_users <id_or_username1> <id_or_username2> ...`")
+                    is_admin, error = admin_handler.verify_access(chat_id)
+                    if not is_admin:
+                        await event.respond(error)
+                    else:
+                        user_import_sessions[sender_id] = {
+                            "chat_id": chat_id,
+                            "add_to_defaults": True,
+                        }
+                        qr_import_sessions.pop(sender_id, None)
+                        await event.respond(
+                            "👤 Forward a message from the Telegram user to add them to the database and default group users.\n\n"
+                            "The forward must expose the sender. Send `!cancel` to abort."
+                        )
             
             elif text.startswith('/admin_remove_users'):
                 parts = text.split()
@@ -255,14 +315,27 @@ async def main():
                     await event.respond("❌ Please provide at least one user ID or username.\n\nUsage: `/admin_remove_users <id_or_username1> <id_or_username2> ...`")
             
             elif text.startswith('/admin_add_user'):
-                # Parse username from command
                 parts = text.split(maxsplit=1)
                 if len(parts) > 1:
                     username = parts[1].strip()
                     response = await admin_handler.handle_add_user_to_db(chat_id, username)
+                    user_import_sessions.pop(sender_id, None)
+                    qr_import_sessions.pop(sender_id, None)
                     await event.respond(response)
                 else:
-                    await event.respond("❌ Please provide a username.\n\nUsage: `/admin_add_user <username>`")
+                    is_admin, error = admin_handler.verify_access(chat_id)
+                    if not is_admin:
+                        await event.respond(error)
+                    else:
+                        user_import_sessions[sender_id] = {
+                            "chat_id": chat_id,
+                            "add_to_defaults": False,
+                        }
+                        qr_import_sessions.pop(sender_id, None)
+                        await event.respond(
+                            "👤 Forward a message from the Telegram user to add them to the database.\n\n"
+                            "The forward must expose the sender. Send `!cancel` to abort."
+                        )
             
             elif text.startswith('/admin_get_qr'):
                 response = await admin_handler.handle_get_qr_backup(chat_id)
@@ -274,6 +347,7 @@ async def main():
                     qr_data = parts[1].strip()
                     response = await admin_handler.handle_set_qr_backup(chat_id, qr_data)
                     qr_import_sessions.pop(sender_id, None)
+                    user_import_sessions.pop(sender_id, None)
                     await event.respond(response)
                 else:
                     is_admin, error = admin_handler.verify_access(chat_id)
@@ -281,6 +355,7 @@ async def main():
                         await event.respond(error)
                     else:
                         qr_import_sessions[sender_id] = {"chat_id": chat_id}
+                        user_import_sessions.pop(sender_id, None)
                         await event.respond(
                             "📷 Forward the original GroupHelp QR image message here.\n\n"
                             "It must be a forwarded image message with `.importbackup` as its caption/body. "
@@ -383,8 +458,10 @@ async def main():
 • `/admin_get_users` - Show default group users
 • `/admin_set_users <id_or_username> ...` - Set default users
 • `/admin_add_users <id_or_username> ...` - Add users to default list
+• `/admin_add_users` - Add a forwarded user to default list
 • `/admin_remove_users <id_or_username> ...` - Remove users from default list
 • `/admin_add_user <username>` - Add new user to database
+• `/admin_add_user` - Add a forwarded user to database
 • `/admin_get_qr` - Get QR backup data
 • `/admin_set_qr <qr_payload>` - Set QR backup data directly
 • `/admin_set_qr` - Decode a forwarded `.importbackup` QR image

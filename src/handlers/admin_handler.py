@@ -32,9 +32,33 @@ class AdminHandler:
         return user, True
 
     def _format_user(self, user: User, user_id: int, created: bool = False) -> str:
-        created_note = " (placeholder created)" if created else ""
+        notes = []
+        if created:
+            notes.append("placeholder created")
+        if not user.username and not user.access_hash:
+            notes.append("not inviteable yet")
+        created_note = f" ({', '.join(notes)})" if notes else ""
         username = f"@{user.username}" if user.username else user.name
         return f"  • {username} (ID: {user_id}){created_note}"
+
+    def _uninviteable_user_ids(self, user_ids: List[int]) -> List[int]:
+        missing = []
+        for user_id in user_ids:
+            user = self.user_service.get_user_by_id(user_id)
+            if user and not user.username and not user.access_hash:
+                missing.append(user_id)
+        return missing
+
+    def _append_uninviteable_warning(self, response: str, user_ids: List[int]) -> str:
+        missing = self._uninviteable_user_ids(user_ids)
+        if missing:
+            response += (
+                "\n\n⚠️ These numeric IDs are stored but not inviteable yet: "
+                f"{missing}. Re-add them with @username, or run `/admin_add_user` "
+                "or `/admin_add_users` with no args and forward a user message "
+                "so Telegram access_hash can be stored."
+            )
+        return response
 
     def _is_numeric_id(self, value) -> bool:
         return str(value).strip().lstrip("-").isdigit()
@@ -46,7 +70,15 @@ class AdminHandler:
             username=username.lstrip("@") if username else None,
             first_name=getattr(entity, "first_name", None) or getattr(entity, "title", None),
             last_name=getattr(entity, "last_name", None),
+            access_hash=getattr(entity, "access_hash", None),
         )
+
+    def _save_user_entity(self, entity, fallback_username: str = None) -> tuple:
+        user = self._user_from_entity(entity, fallback_username=fallback_username)
+        existed = self.user_service.get_user_by_id(user.id) is not None
+        if not self.user_service.save_user(user):
+            raise RuntimeError(f"Failed to save user {user.id}")
+        return user.id, user, not existed
 
     async def _resolve_user_identifier(self, identifier) -> tuple:
         identifier = str(identifier).strip().rstrip(",")
@@ -58,13 +90,9 @@ class AdminHandler:
             if self.telegram_client:
                 try:
                     entity = await self.telegram_client.get_entity(user_id)
-                    user = self._user_from_entity(entity)
-                    existed = self.user_service.get_user_by_id(user.id) is not None
-                    if not self.user_service.save_user(user):
-                        raise RuntimeError(f"Failed to save user {user.id}")
-                    return user.id, user, not existed
-                except Exception:
-                    logger.info("Could not resolve numeric user ID %s, creating placeholder", user_id)
+                    return self._save_user_entity(entity)
+                except Exception as e:
+                    logger.info("Could not resolve numeric user ID %s, creating placeholder: %s", user_id, e)
             user, created = self._ensure_user_record(user_id)
             return user_id, user, created
 
@@ -73,11 +101,7 @@ class AdminHandler:
 
         username = identifier.lstrip("@")
         entity = await self.telegram_client.get_entity(username)
-        user = self._user_from_entity(entity, fallback_username=username)
-        existed = self.user_service.get_user_by_id(user.id) is not None
-        if not self.user_service.save_user(user):
-            raise RuntimeError(f"Failed to save user {user.id}")
-        return user.id, user, not existed
+        return self._save_user_entity(entity, fallback_username=username)
 
     async def _resolve_user_identifiers(self, identifiers: List) -> tuple:
         resolved = []
@@ -151,6 +175,7 @@ class AdminHandler:
                     response += "\n\nℹ️ New user records were created."
                 if errors:
                     response += "\n\n⚠️ Some identifiers could not be resolved:\n" + "\n".join(errors)
+                response = self._append_uninviteable_warning(response, valid_user_ids)
                 
                 return response
             else:
@@ -194,6 +219,7 @@ class AdminHandler:
                     response += "\n\nℹ️ New user records were created."
                 if errors:
                     response += "\n\n⚠️ Some identifiers could not be resolved:\n" + "\n".join(errors)
+                response = self._append_uninviteable_warning(response, valid_user_ids)
                 
                 return response
             else:
@@ -262,6 +288,34 @@ class AdminHandler:
         except Exception as e:
             logger.error(f"Error adding user {username}: {e}")
             return f"❌ Error adding user: {str(e)}"
+
+    async def handle_add_user_entity(self, chat_id: int, entity, add_to_defaults: bool = False) -> str:
+        """Add a Telegram entity exposed by a forwarded user message."""
+        is_admin, error = self.verify_access(chat_id)
+        if not is_admin:
+            return error
+
+        try:
+            user_id, user, created = self._save_user_entity(entity)
+            action = "added" if created else "updated"
+            user_label = f"@{user.username}" if user.username else user.name
+            response = f"✅ User {user_label} {action} successfully (ID: {user_id})."
+
+            if add_to_defaults:
+                current_users = get_default_group_users()
+                if user_id not in current_users:
+                    if set_default_group_users(current_users + [user_id]):
+                        response += "\n✅ User added to default group users."
+                    else:
+                        response += "\n❌ Failed to add user to default group users."
+                else:
+                    response += "\nℹ️ User is already in default group users."
+
+            response = self._append_uninviteable_warning(response, [user_id])
+            return response
+        except Exception as e:
+            logger.error(f"Error adding forwarded user entity: {e}")
+            return f"❌ Error adding forwarded user: {str(e)}"
     
     async def handle_get_qr_backup(self, chat_id: int) -> str:
         """Retrieve current QR backup data (Admin only)"""
@@ -332,9 +386,11 @@ class AdminHandler:
 **Default Group Users Management:**
 • `/admin_set_users <id_or_username> ...` - Replace entire default users list
 • `/admin_add_users <id_or_username> ...` - Add users to default list
+• `/admin_add_users` - Wait for a forwarded user message and add it to defaults
 • `/admin_remove_users <id_or_username> ...` - Remove users from default list
 • `/admin_get_users` - Show current default users
 • `/admin_add_user <username>` - Resolve and save a user in the database
+• `/admin_add_user` - Wait for a forwarded user message and save it
 
 **QR Code Backup:**
 • `/admin_get_qr` - Get current QR backup data

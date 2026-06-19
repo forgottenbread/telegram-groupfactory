@@ -19,9 +19,11 @@ The following commands can ONLY be run from the admin chat:
 #### User Management
 ```
 /admin_add_user <username>        - Add new user to database
+/admin_add_user                   - Add a forwarded user to database
 /admin_get_users                  - View default users list
 /admin_set_users <id_or_username> ...  - Replace entire default users list
 /admin_add_users <id_or_username> ...  - Add users to default list
+/admin_add_users                  - Add a forwarded user to default list
 /admin_remove_users <id_or_username>   - Remove users from default list
 ```
 

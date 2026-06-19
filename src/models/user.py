@@ -8,6 +8,7 @@ class User:
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    access_hash: Optional[int] = None
     
     def __post_init__(self):
         if self.id is None:
@@ -25,7 +26,8 @@ class User:
             id=data.get('id'),
             username=data.get('username'),
             first_name=data.get('first_name'),
-            last_name=data.get('last_name')
+            last_name=data.get('last_name'),
+            access_hash=data.get('access_hash')
         )
     
     def to_dict(self):
@@ -34,5 +36,6 @@ class User:
             'id': self.id,
             'username': self.username,
             'first_name': self.first_name,
-            'last_name': self.last_name
+            'last_name': self.last_name,
+            'access_hash': self.access_hash
         }

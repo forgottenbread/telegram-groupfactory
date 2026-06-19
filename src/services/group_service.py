@@ -93,6 +93,49 @@ class GroupService:
             logger.warning(f"Failed to export invite link: {e}")
             return None
 
+    def _user_label(self, user) -> str:
+        if user.username:
+            return f"@{user.username}"
+        return str(user.id)
+
+    def _save_resolved_access_hash(self, user, input_user) -> None:
+        access_hash = getattr(input_user, "access_hash", None)
+        user_id = getattr(input_user, "user_id", None) or getattr(input_user, "id", None)
+        if access_hash and user_id:
+            user.id = user_id
+            user.access_hash = access_hash
+            self.mongo_service.save_user(user)
+
+    async def _resolve_input_user(self, user):
+        if user.access_hash:
+            return types.InputUser(user.id, user.access_hash)
+
+        references = []
+        if user.username:
+            references.append(user.username)
+        references.append(user.id)
+
+        last_error = None
+        for reference in references:
+            try:
+                input_user = await self.client.get_input_entity(reference)
+                self._save_resolved_access_hash(user, input_user)
+                access_hash = getattr(input_user, "access_hash", None)
+                user_id = getattr(input_user, "user_id", None) or getattr(input_user, "id", None)
+                if access_hash and user_id:
+                    return types.InputUser(user_id, access_hash)
+                return input_user
+            except ValueError as e:
+                last_error = e
+
+        if not user.username:
+            raise ValueError(
+                "numeric ID has no stored access_hash. Add this user by @username "
+                "or use /admin_add_user or /admin_add_users with no args and "
+                "forward a user message."
+            ) from last_error
+        raise last_error or ValueError("could not resolve Telegram user")
+
     async def create_group(
         self,
         group_name: str,
@@ -147,8 +190,8 @@ class GroupService:
                             f"👥 Adding users: {index}/{len(users)} completed",
                         )
 
-                    user_ref = user.username or user.id
-                    user_to_add = await self.client.get_input_entity(user_ref)
+                    user_ref = self._user_label(user)
+                    user_to_add = await self._resolve_input_user(user)
                     await self.client(InviteToChannelRequest(target_group, [user_to_add]))
                     await self._promote_user(target_group, user_to_add, full_admin=False)
                     success_count += 1
@@ -159,18 +202,17 @@ class GroupService:
                     await self._notify(status_callback, "⚠️ Telegram flood limit reached. Pausing for 30 seconds...")
                     await asyncio.sleep(30)
                 except UserPrivacyRestrictedError:
-                    logger.warning(f"User {user.username or user.id} has privacy restrictions")
+                    logger.warning(f"User {self._user_label(user)} has privacy restrictions")
                     error_count += 1
                 except ValueError as e:
-                    logger.error(f"Could not resolve Telegram entity for user {user.username or user.id}: {e}")
+                    logger.error(f"Could not resolve Telegram entity for user {self._user_label(user)}: {e}")
                     await self._notify(
                         status_callback,
-                        f"⚠️ Could not resolve user {user.username or user.id}. "
-                        "If this is a numeric ID, the userbot must have seen that user or you must store a username."
+                        f"⚠️ Could not resolve user {self._user_label(user)}: {e}"
                     )
                     error_count += 1
                 except Exception as e:
-                    logger.error(f"Error adding user {user.username or user.id}: {e}")
+                    logger.error(f"Error adding user {self._user_label(user)}: {e}")
                     error_count += 1
                     if error_count > 10:
                         await self._notify(status_callback, "❌ Too many errors, aborting user addition!")
@@ -272,9 +314,9 @@ class GroupService:
             
             group = await self.client.get_input_entity(group_id)
             for user in users:
-                user_ref = user.username or user.id
+                user_ref = self._user_label(user)
                 try:
-                    user_to_add = await self.client.get_input_entity(user_ref)
+                    user_to_add = await self._resolve_input_user(user)
                     await self.client(InviteToChannelRequest(group, [user_to_add]))
                 except ValueError as e:
                     logger.error(f"Could not resolve Telegram entity for user {user_ref}: {e}")

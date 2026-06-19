@@ -88,8 +88,10 @@ docker run telegram-groupfactory
 ### Admin Commands (Admin Chat Only)
 ```
 /admin_add_user <username>        - Add user to database
+/admin_add_user                   - Add a forwarded user to database
 /admin_set_users <id_or_username> ...  - Set default users for groups
 /admin_add_users <id_or_username> ...  - Add users to default list
+/admin_add_users                  - Add a forwarded user to default list
 /admin_remove_users <id_or_username>   - Remove users from default list
 /admin_get_users                  - Show current default users
 /admin_set_qr <qr_payload>        - Store GroupHelp backup payload rendered as a QR image
