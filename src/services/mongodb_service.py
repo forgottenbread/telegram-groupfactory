@@ -33,7 +33,7 @@ class MongoDBService:
     def get_users(self) -> List[User]:
         """Retrieve all users from MongoDB collection"""
         try:
-            if not self.collection:
+            if self.collection is None:
                 logger.error("MongoDB collection not initialized")
                 return []
             
@@ -48,7 +48,7 @@ class MongoDBService:
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         """Retrieve a specific user by ID from MongoDB"""
         try:
-            if not self.collection:
+            if self.collection is None:
                 logger.error("MongoDB collection not initialized")
                 return None
             
@@ -63,7 +63,7 @@ class MongoDBService:
     def save_user(self, user: User) -> bool:
         """Save a user to MongoDB collection"""
         try:
-            if not self.collection:
+            if self.collection is None:
                 logger.error("MongoDB collection not initialized")
                 return False
             
@@ -84,7 +84,7 @@ class MongoDBService:
     def delete_user(self, user_id: int) -> bool:
         """Delete a user from MongoDB collection"""
         try:
-            if not self.collection:
+            if self.collection is None:
                 logger.error("MongoDB collection not initialized")
                 return False
             

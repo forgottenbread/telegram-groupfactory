@@ -43,7 +43,7 @@ class UserHandler:
             import hashlib
             user_id = int(hashlib.md5(username.encode()).hexdigest()[:8], 16)
             
-            user = User(id=user_id, username=username, name=username)
+            user = User(id=user_id, username=username, first_name=username)
             success = self.user_service.save_user(user)
             if success:
                 return f"✅ User {username} added successfully (ID: {user_id})"

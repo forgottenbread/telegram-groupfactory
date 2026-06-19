@@ -1,9 +1,8 @@
 import asyncio
 import logging
-import json
 import uvicorn
-from telethon import Button, TelegramClient, events
-from src.config import load_config, save_user_admin_role, get_user_admin_role
+from telethon import TelegramClient, events
+from src.config import load_config
 from src.services.mongodb_service import MongoDBService
 from src.services.user_service import UserService
 from src.services.group_service import GroupService
@@ -25,6 +24,8 @@ async def main():
     
     # Load configuration
     config = load_config()
+    staff_chat_id = config['telegram']['staff_chat_id']
+    factory_bot_id = config['telegram']['factory_bot_id']
     
     # Initialize MongoDB service
     mongo_service = MongoDBService(
@@ -47,46 +48,21 @@ async def main():
         config['telegram']['api_id'],
         config['telegram']['api_hash']
     )
-    
-    @client.on(events.CallbackQuery())
-    async def callback_handler(event):
-        """Handle inline button callbacks for admin role selection"""
-        try:
-            data = event.data.decode() if isinstance(event.data, bytes) else event.data
-            
-            # Parse callback data
-            if data.startswith('admin_role:'):
-                user_id = event.sender_id
-                is_full_admin = data.split(':')[1] == 'yes'
-                
-                # Save the user's admin role preference
-                if save_user_admin_role(user_id, is_full_admin):
-                    role_text = "✅ Full Group Admin" if is_full_admin else "👤 Regular Member"
-                    await event.answer(f"Set as {role_text}")
-                    
-                    # Edit the message to show the selection
-                    await event.edit(f"Group Admin Role Selection\n\n{role_text} - Confirmed!")
-                else:
-                    await event.answer("❌ Failed to save preference", alert=True)
-            
-            elif data.startswith('group_create:'):
-                # Extract group name and user IDs from callback
-                parts = data.split(':', 2)
-                if len(parts) >= 3:
-                    group_name = parts[1]
-                    user_ids_str = parts[2]
-                    
-                    try:
-                        user_ids = [int(uid) for uid in user_ids_str.split(',')] if user_ids_str else None
-                        response = await group_handler.handle_create_group(group_name, user_ids)
-                        await event.answer()
-                        await event.edit(response)
-                    except ValueError:
-                        await event.answer("❌ Invalid user IDs", alert=True)
-        
-        except Exception as e:
-            logger.error(f"Error handling callback: {e}")
-            await event.answer(f"❌ Error: {str(e)}", alert=True)
+    group_service.set_client(client)
+    group_conversations = {}
+
+    async def create_group_from_staff_flow(event, name: str, description: str):
+        response = await group_handler.handle_create_group(
+            name,
+            description=description,
+            status_callback=event.respond,
+            staff_chat_id=staff_chat_id,
+            factory_bot_id=factory_bot_id,
+        )
+        await event.respond(response)
+
+    def is_staff_chat(chat_id: int) -> bool:
+        return chat_id == staff_chat_id
     
     @client.on(events.NewMessage())
     async def message_handler(event):
@@ -101,6 +77,105 @@ async def main():
             return
         
         try:
+            # ==================== IMS GROUPFACTORY STAFF FLOW ====================
+            if is_staff_chat(chat_id):
+                raw_text = text.strip()
+                lower_text = raw_text.lower()
+
+                if lower_text == '!ping':
+                    await event.respond('PONG -> IMS GroupFactory Userbot')
+                    return
+
+                if lower_text == '!help':
+                    help_text = """**IMS GroupFactory Commands**
+
+`!newgrp` - Start creating a new Telegram group
+`!cancel` - Cancel the current operation
+`!confirm` - Confirm group creation
+`!PING` - Check if the userbot is online
+`!help` - Display this help message"""
+                    await event.respond(help_text)
+                    return
+
+                if lower_text == '!cancel':
+                    if sender_id in group_conversations:
+                        del group_conversations[sender_id]
+                        await event.respond('🛑 Operation canceled.')
+                    else:
+                        await event.respond('❓ No active operation to cancel.')
+                    return
+
+                if lower_text.startswith('!newgrp'):
+                    if lower_text != '!newgrp':
+                        cmd_args = raw_text[len('!newgrp'):].strip()
+                        marker = "\n\nDescription:\n"
+                        if marker in cmd_args:
+                            name, description = cmd_args.split(marker, 1)
+                            name = name.strip()
+                            description = description.strip()
+                            if not name or not description:
+                                await event.respond('⚠️ Group name and description cannot be empty.')
+                                return
+                            await create_group_from_staff_flow(event, name, description)
+                        else:
+                            await event.respond('⚠️ Old format detected but missing description.\nUse `!newgrp` alone to start interactive mode.')
+                        return
+
+                    group_conversations[sender_id] = {
+                        'step': 'name',
+                        'data': {}
+                    }
+                    await event.respond('👋 Let\'s create a new group!\n\nPlease enter the group name:')
+                    return
+
+                if sender_id in group_conversations:
+                    current_step = group_conversations[sender_id]['step']
+
+                    if lower_text == '!confirm' and current_step == 'confirm':
+                        name = group_conversations[sender_id]['data']['name']
+                        description = group_conversations[sender_id]['data']['description']
+                        await event.respond('✅ Confirmed! Starting group creation process...')
+                        try:
+                            await create_group_from_staff_flow(event, name, description)
+                        finally:
+                            group_conversations.pop(sender_id, None)
+                        return
+
+                    if raw_text.startswith('!'):
+                        if current_step == 'confirm':
+                            await event.respond('❓ Please type `!confirm` to create the group or `!cancel` to abort.')
+                        return
+
+                    if current_step == 'name':
+                        if not raw_text:
+                            await event.respond('⚠️ Group name cannot be empty. Please try again:')
+                            return
+
+                        group_conversations[sender_id]['data']['name'] = raw_text
+                        group_conversations[sender_id]['step'] = 'description'
+                        await event.respond(f'📝 Group name set to: "{raw_text}"\n\nNow please enter the group description:')
+                        return
+
+                    if current_step == 'description':
+                        if not raw_text:
+                            await event.respond('⚠️ Group description cannot be empty. Please try again:')
+                            return
+
+                        group_conversations[sender_id]['data']['description'] = raw_text
+                        name = group_conversations[sender_id]['data']['name']
+                        group_conversations[sender_id]['step'] = 'confirm'
+                        await event.respond(
+                            f'📋 **Group Creation Summary**\n\n'
+                            f'**Name**: {name}\n'
+                            f'**Description**: {raw_text}\n\n'
+                            f'Type `!confirm` to create this group or `!cancel` to abort.'
+                        )
+                        return
+
+                    if current_step == 'confirm':
+                        await event.respond('❓ Please type `!confirm` to create the group or `!cancel` to abort.')
+                        return
+
             # ==================== ADMIN COMMANDS ====================
             # All admin commands require being in the admin chat
             
@@ -178,36 +253,7 @@ async def main():
             # ==================== GROUP COMMANDS ====================
             
             elif text.startswith('/create_group'):
-                # Parse group name and optional user IDs
-                parts = text.split(maxsplit=2)
-                if len(parts) > 1:
-                    group_name = parts[1]
-                    user_ids = None
-                    if len(parts) > 2:
-                        try:
-                            user_ids = [int(uid) for uid in parts[2].split(',')]
-                        except ValueError:
-                            await event.respond("❌ Invalid user IDs format.\n\nUsage: `/create_group <name>` or `/create_group <name> <user_id1>,<user_id2>,...`")
-                            return
-                    
-                    # Create the group
-                    response = await group_handler.handle_create_group(group_name, user_ids)
-                    
-                    # Ask about admin role with inline buttons
-                    buttons = [
-                        [
-                            Button.inline("✅ Yes, I want to be full admin", b"admin_role:yes"),
-                            Button.inline("❌ No, just regular member", b"admin_role:no"),
-                        ]
-                    ]
-                    
-                    await event.respond(
-                        f"{response}\n\n" +
-                        "👤 Would you like to be added as a full admin to this group?",
-                        buttons=buttons
-                    )
-                else:
-                    await event.respond("❌ Please provide a group name.\n\nUsage: `/create_group <name>` or `/create_group <name> <user_id1>,<user_id2>,...`")
+                await event.respond("ℹ️ `/create_group` has been replaced. Use `!newgrp` in the staff chat.")
             
             elif text.startswith('/add_users'):
                 # Parse group ID and user IDs
@@ -287,8 +333,8 @@ async def main():
 • `/delete_user <user_id>` - Delete user
 
 **Group Management:**
-• `/create_group <name>` - Create group with default users
-• `/create_group <name> <id1>,<id2>` - Create group with specific users
+• `!newgrp` - Create a group with database users and stored GroupHelp QR import
+• `/create_group` - Deprecated; use `!newgrp`
 • `/add_users <group_id> <id1>,<id2>` - Add users to group
 • `/get_group <group_id>` - Get group info
 

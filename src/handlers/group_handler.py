@@ -1,9 +1,11 @@
 import logging
-from typing import List
+from typing import Awaitable, Callable, List, Optional
 from src.services.user_service import UserService
 from src.services.group_service import GroupService
 
 logger = logging.getLogger(__name__)
+
+StatusCallback = Callable[[str], Awaitable[object]]
 
 class GroupHandler:
     """Handler class for group-related commands"""
@@ -12,12 +14,34 @@ class GroupHandler:
         self.user_service = user_service
         self.group_service = group_service
     
-    async def handle_create_group(self, group_name: str, user_ids: List[int]) -> str:
+    async def handle_create_group(
+        self,
+        group_name: str,
+        user_ids: List[int] = None,
+        description: str = "",
+        status_callback: Optional[StatusCallback] = None,
+        staff_chat_id: Optional[int] = None,
+        factory_bot_id: Optional[int] = None,
+    ) -> str:
         """Handle command to create a new group"""
         try:
-            group_id = await self.group_service.create_group(group_name, user_ids)
-            if group_id:
-                return f"✅ Group '{group_name}' created successfully with ID: {group_id}"
+            result = await self.group_service.create_group(
+                group_name,
+                description=description,
+                user_ids=user_ids,
+                status_callback=status_callback,
+                staff_chat_id=staff_chat_id,
+                factory_bot_id=factory_bot_id,
+            )
+            if result:
+                invite = f"\n🔗 {result['invite_link']}" if result.get("invite_link") else ""
+                qr_status = "\n✅ GroupHelp QR import sent" if result.get("qr_imported") else "\n⚠️ GroupHelp QR import not configured"
+                return (
+                    f"✅ Group '{group_name}' created successfully with ID: {result['id']}\n"
+                    f"👥 Added {result['users_added']}/{result['users_total']} users"
+                    f"{qr_status}"
+                    f"{invite}"
+                )
             else:
                 return "❌ Failed to create group"
         except Exception as e:

@@ -15,6 +15,7 @@ class AddUserRequest(BaseModel):
 
 class CreateGroupRequest(BaseModel):
     name: str = Field(..., min_length=1)
+    description: Optional[str] = None
     user_ids: Optional[List[int]] = None
     full_admin: Optional[bool] = None
 

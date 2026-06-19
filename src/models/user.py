@@ -12,6 +12,11 @@ class User:
     def __post_init__(self):
         if self.id is None:
             raise ValueError("User ID cannot be None")
+
+    @property
+    def name(self) -> str:
+        parts = [part for part in [self.first_name, self.last_name] if part]
+        return " ".join(parts) or self.username or str(self.id)
     
     @classmethod
     def from_dict(cls, data: dict):

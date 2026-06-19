@@ -75,6 +75,15 @@ docker run telegram-groupfactory
 
 ## Quick Start
 
+### GroupFactory Commands (Staff Chat Only)
+```
+!newgrp                         - Start interactive group creation
+!confirm                        - Confirm pending group creation
+!cancel                         - Cancel pending group creation
+!PING                           - Check if the userbot is online
+!help                           - Show GroupFactory commands
+```
+
 ### Admin Commands (Admin Chat Only)
 ```
 /admin_add_user <username>        - Add user to database
@@ -86,9 +95,9 @@ docker run telegram-groupfactory
 /admin_get_qr                     - Retrieve GroupHelp backup QR data
 ```
 
-### User Commands
+### Legacy User Commands
 ```
-/create_group <name>              - Create group with default users
+/create_group <name>              - Deprecated; use !newgrp in staff chat
 /users                            - List all users
 /user <user_id>                   - Get user info
 /help                             - Show all available commands
@@ -96,7 +105,8 @@ docker run telegram-groupfactory
 
 ## Available Commands
 
-- `/create_group <name>` - Create a new group
+- `!newgrp` - Create a new group with DB users and stored GroupHelp QR import
+- `/create_group <name>` - Deprecated; use `!newgrp`
 - `/add_users <group_id> <user_ids>` - Add users to a group
 - `/get_group <group_id>` - Get group information
 - `/users` - List all users

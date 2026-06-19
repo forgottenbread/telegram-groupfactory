@@ -6,7 +6,6 @@ from src.api.schemas import (
     CommandResponse,
     CreateGroupRequest,
 )
-from src.config import save_user_admin_role
 
 
 def _envelope(message: str) -> CommandResponse:
@@ -19,14 +18,13 @@ router = APIRouter(prefix="/api/groups", tags=["groups"], dependencies=[Depends(
 @router.post("", response_model=CommandResponse)
 async def create_group(payload: CreateGroupRequest, request: Request):
     handler = request.app.state.group_handler
-    message = await handler.handle_create_group(payload.name, payload.user_ids)
-
-    # Mirror the Telegram inline-button flow: persist the admin-role choice
-    # against the bot user (the entity creating the group via the API).
-    if payload.full_admin is not None:
-        bot_user_id = request.app.state.config["telegram"].get("factory_bot_id")
-        if bot_user_id:
-            save_user_admin_role(bot_user_id, payload.full_admin)
+    message = await handler.handle_create_group(
+        payload.name,
+        user_ids=payload.user_ids,
+        description=payload.description or payload.name,
+        staff_chat_id=request.app.state.config["telegram"].get("staff_chat_id"),
+        factory_bot_id=request.app.state.config["telegram"].get("factory_bot_id"),
+    )
 
     return _envelope(message)
 
