@@ -285,6 +285,7 @@ MONGODB_COLLECTION=ghconfig
 
 STAFF_CHAT_ID=your_staff_chat_id
 FACTORY_BOT_ID=your_bot_id
+FACTORY_BOT_USERNAME=your_bot_username
 ```
 
 ---

@@ -215,6 +215,7 @@ MONGODB_COLLECTION=ghconfig
 # Admin
 STAFF_CHAT_ID=your_admin_chat_id
 FACTORY_BOT_ID=your_bot_id
+FACTORY_BOT_USERNAME=your_bot_username
 
 # Logging
 LOG_LEVEL=INFO

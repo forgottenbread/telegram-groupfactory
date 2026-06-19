@@ -106,6 +106,7 @@ class GroupService:
         status_callback: Optional[StatusCallback] = None,
         staff_chat_id: Optional[int] = None,
         factory_bot_id: Optional[int] = None,
+        factory_bot_username: Optional[str] = None,
     ) -> Optional[dict]:
         """Create a Telegram megagroup and run the IMS GroupFactory setup flow."""
         try:
@@ -165,6 +166,14 @@ class GroupService:
                 except UserPrivacyRestrictedError:
                     logger.warning(f"User {user.username or user.id} has privacy restrictions")
                     error_count += 1
+                except ValueError as e:
+                    logger.error(f"Could not resolve Telegram entity for user {user.username or user.id}: {e}")
+                    await self._notify(
+                        status_callback,
+                        f"⚠️ Could not resolve user {user.username or user.id}. "
+                        "If this is a numeric ID, the userbot must have seen that user or you must store a username."
+                    )
+                    error_count += 1
                 except Exception as e:
                     logger.error(f"Error adding user {user.username or user.id}: {e}")
                     error_count += 1
@@ -178,10 +187,12 @@ class GroupService:
                     f"✅ Added {success_count}/{len(users)} users to the group",
                 )
 
-            if factory_bot_id:
+            factory_bot_username = (factory_bot_username or "").strip().lstrip("@")
+            factory_bot_ref = factory_bot_username or factory_bot_id
+            if factory_bot_ref:
                 try:
-                    logger.info(f"Promoting factory bot {factory_bot_id} as manager")
-                    factory_bot = await self.client.get_input_entity(factory_bot_id)
+                    logger.info(f"Promoting factory bot {factory_bot_ref} as manager")
+                    factory_bot = await self.client.get_input_entity(factory_bot_ref)
                     try:
                         await self.client(InviteToChannelRequest(target_group, [factory_bot]))
                     except Exception as e:
@@ -189,8 +200,15 @@ class GroupService:
                     await self._promote_user(target_group, factory_bot, full_admin=True)
                     await asyncio.sleep(2)
                 except Exception as e:
-                    logger.error(f"Failed to promote factory bot {factory_bot_id}: {e}")
-                    await self._notify(status_callback, f"⚠️ Failed to promote factory bot: {e}")
+                    logger.error(f"Failed to promote factory bot {factory_bot_ref}: {e}")
+                    if factory_bot_username:
+                        await self._notify(status_callback, f"⚠️ Failed to promote factory bot @{factory_bot_username}: {e}")
+                    else:
+                        await self._notify(
+                            status_callback,
+                            "⚠️ Failed to promote factory bot from FACTORY_BOT_ID. "
+                            "Set FACTORY_BOT_USERNAME so Telethon can resolve the bot entity."
+                        )
 
             await self._notify(status_callback, "⚙️ Sending GroupHelp setup commands...")
             await self.client.send_message(target_group, "/pro")
@@ -257,8 +275,12 @@ class GroupService:
             group = await self.client.get_input_entity(group_id)
             for user in users:
                 user_ref = user.username or user.id
-                user_to_add = await self.client.get_input_entity(user_ref)
-                await self.client(InviteToChannelRequest(group, [user_to_add]))
+                try:
+                    user_to_add = await self.client.get_input_entity(user_ref)
+                    await self.client(InviteToChannelRequest(group, [user_to_add]))
+                except ValueError as e:
+                    logger.error(f"Could not resolve Telegram entity for user {user_ref}: {e}")
+                    return False
 
             logger.info(f"Successfully added {len(users)} users to group {group_id}")
             return True

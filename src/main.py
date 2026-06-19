@@ -26,6 +26,7 @@ async def main():
     config = load_config()
     staff_chat_id = config['telegram']['staff_chat_id']
     factory_bot_id = config['telegram']['factory_bot_id']
+    factory_bot_username = config['telegram']['factory_bot_username']
     
     # Initialize MongoDB service
     mongo_service = MongoDBService(
@@ -58,6 +59,7 @@ async def main():
             status_callback=event.respond,
             staff_chat_id=staff_chat_id,
             factory_bot_id=factory_bot_id,
+            factory_bot_username=factory_bot_username,
         )
         await event.respond(response)
 

@@ -9,7 +9,8 @@ TELETHON_TOKEN = os.environ.get("TELETHON_TOKEN")
 TELETHON_API_HASH = os.environ.get("TELETHON_API_HASH")
 TELETHON_API_ID = int(os.environ.get("TELETHON_API_ID", 0))
 STAFF_CHAT_ID = int(os.environ.get("STAFF_CHAT_ID", 0))
-FACTORY_BOT_ID = int(os.environ.get("FACTORY_BOT_ID", 0))
+FACTORY_BOT_ID = int(os.environ.get("FACTORY_BOT_ID") or 0)
+FACTORY_BOT_USERNAME = os.environ.get("FACTORY_BOT_USERNAME", "").strip()
 
 # MongoDB configuration
 MONGODB_URI = os.environ.get('MONGODB_URI', '')
@@ -74,7 +75,8 @@ def load_config():
             'session': get_telegram_session(),
             'session_file': 'session',
             'staff_chat_id': STAFF_CHAT_ID,
-            'factory_bot_id': FACTORY_BOT_ID
+            'factory_bot_id': FACTORY_BOT_ID,
+            'factory_bot_username': FACTORY_BOT_USERNAME,
         },
         'mongodb': {
             'uri': MONGODB_URI,

@@ -39,6 +39,7 @@ The application follows a modular architecture with the following components:
    
    STAFF_CHAT_ID=your_admin_chat_id
    FACTORY_BOT_ID=your_bot_id
+   FACTORY_BOT_USERNAME=your_bot_username
    ```
 
    Generate `TELETHON_TOKEN` with:

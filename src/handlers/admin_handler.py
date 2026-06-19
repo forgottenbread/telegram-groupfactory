@@ -14,6 +14,22 @@ class AdminHandler:
     
     def __init__(self, user_service: UserService):
         self.user_service = user_service
+
+    def _ensure_user_record(self, user_id: int) -> tuple:
+        user = self.user_service.get_user_by_id(user_id)
+        if user:
+            return user, False
+
+        user = User(id=user_id, username=None, first_name=f"id:{user_id}")
+        saved = self.user_service.save_user(user)
+        if not saved:
+            raise RuntimeError(f"Failed to create placeholder user record for {user_id}")
+        return user, True
+
+    def _format_user(self, user: User, user_id: int, created: bool = False) -> str:
+        created_note = " (placeholder created)" if created else ""
+        username = f"@{user.username}" if user.username else user.name
+        return f"  • {username} (ID: {user_id}){created_note}"
     
     def verify_access(self, chat_id: int) -> tuple:
         """Verify admin access"""
@@ -53,19 +69,14 @@ class AdminHandler:
             if not user_ids:
                 return "❌ Please provide at least one user ID.\n\nUsage: `/admin_set_users <user_id1> <user_id2> ...`"
             
-            # Verify all users exist
             valid_user_ids = []
-            invalid_user_ids = []
+            created_users = []
             
             for user_id in user_ids:
-                user = self.user_service.get_user_by_id(user_id)
-                if user:
-                    valid_user_ids.append(user_id)
-                else:
-                    invalid_user_ids.append(user_id)
-            
-            if not valid_user_ids:
-                return f"❌ No valid users found. User IDs {invalid_user_ids} do not exist in database."
+                _, created = self._ensure_user_record(user_id)
+                valid_user_ids.append(user_id)
+                if created:
+                    created_users.append(user_id)
             
             # Set default users
             if set_default_group_users(valid_user_ids):
@@ -73,12 +84,11 @@ class AdminHandler:
                 for user_id in valid_user_ids:
                     user = self.user_service.get_user_by_id(user_id)
                     if user:
-                        user_list.append(f"  • {user.username} (ID: {user_id})")
+                        user_list.append(self._format_user(user, user_id, user_id in created_users))
                 
                 response = "✅ Default users updated successfully:\n" + "\n".join(user_list)
-                
-                if invalid_user_ids:
-                    response += f"\n\n⚠️ These users were not found: {invalid_user_ids}"
+                if created_users:
+                    response += "\n\nℹ️ Placeholder records were created for new Telegram IDs."
                 
                 return response
             else:
@@ -99,23 +109,18 @@ class AdminHandler:
             
             current_users = get_default_group_users()
             
-            # Verify all new users exist
             valid_user_ids = []
-            invalid_user_ids = []
+            created_users = []
             
             for user_id in user_ids:
                 if user_id not in current_users:
-                    user = self.user_service.get_user_by_id(user_id)
-                    if user:
-                        valid_user_ids.append(user_id)
-                    else:
-                        invalid_user_ids.append(user_id)
+                    _, created = self._ensure_user_record(user_id)
+                    valid_user_ids.append(user_id)
+                    if created:
+                        created_users.append(user_id)
             
             if not valid_user_ids:
-                if invalid_user_ids:
-                    return f"❌ No valid users found. User IDs {invalid_user_ids} do not exist in database."
-                else:
-                    return "ℹ️ All provided users are already in the default list."
+                return "ℹ️ All provided users are already in the default list."
             
             # Add to default users
             updated_users = current_users + valid_user_ids
@@ -124,12 +129,11 @@ class AdminHandler:
                 for user_id in valid_user_ids:
                     user = self.user_service.get_user_by_id(user_id)
                     if user:
-                        user_list.append(f"  • {user.username} (ID: {user_id})")
+                        user_list.append(self._format_user(user, user_id, user_id in created_users))
                 
                 response = "✅ Users added to default list:\n" + "\n".join(user_list)
-                
-                if invalid_user_ids:
-                    response += f"\n\n⚠️ These users were not found: {invalid_user_ids}"
+                if created_users:
+                    response += "\n\nℹ️ Placeholder records were created for new Telegram IDs."
                 
                 return response
             else:

@@ -22,6 +22,7 @@ class GroupHandler:
         status_callback: Optional[StatusCallback] = None,
         staff_chat_id: Optional[int] = None,
         factory_bot_id: Optional[int] = None,
+        factory_bot_username: Optional[str] = None,
     ) -> str:
         """Handle command to create a new group"""
         try:
@@ -32,6 +33,7 @@ class GroupHandler:
                 status_callback=status_callback,
                 staff_chat_id=staff_chat_id,
                 factory_bot_id=factory_bot_id,
+                factory_bot_username=factory_bot_username,
             )
             if result:
                 invite = f"\n🔗 {result['invite_link']}" if result.get("invite_link") else ""

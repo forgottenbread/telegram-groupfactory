@@ -24,6 +24,7 @@ async def create_group(payload: CreateGroupRequest, request: Request):
         description=payload.description or payload.name,
         staff_chat_id=request.app.state.config["telegram"].get("staff_chat_id"),
         factory_bot_id=request.app.state.config["telegram"].get("factory_bot_id"),
+        factory_bot_username=request.app.state.config["telegram"].get("factory_bot_username"),
     )
 
     return _envelope(message)
