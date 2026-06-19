@@ -83,7 +83,7 @@ async def main():
                 lower_text = raw_text.lower()
 
                 if lower_text == '!ping':
-                    await event.respond('PONG -> IMS GroupFactory Userbot')
+                    await event.respond('PONG - GroupFactory Service Userbot')
                     return
 
                 if lower_text == '!help':
@@ -361,6 +361,8 @@ async def main():
         # Start the client
         await client.start()
         logger.info("Telegram client started successfully")
+        if staff_chat_id:
+            await client.send_message(staff_chat_id, "GroupFactory Service Userbot started.")
 
         # Run the Telegram client and the REST API concurrently. If either
         # exits, cancel the other so the process shuts down cleanly.
