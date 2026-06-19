@@ -6,8 +6,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/YOUR_ORG/telegram-groupfactory.git
-    targetRevision: main
+    repoURL: https://git.devops.lnxc.it/dev/IMS/telegram-groupfactory.git
+    targetRevision: master
     path: k8s
   destination:
     server: https://kubernetes.default.svc

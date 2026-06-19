@@ -2,8 +2,7 @@ import asyncio
 import logging
 import json
 import uvicorn
-from telethon import TelegramClient, events
-from telethon.tl.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telethon import Button, TelegramClient, events
 from src.config import load_config, save_user_admin_role, get_user_admin_role
 from src.services.mongodb_service import MongoDBService
 from src.services.user_service import UserService
@@ -195,12 +194,12 @@ async def main():
                     response = await group_handler.handle_create_group(group_name, user_ids)
                     
                     # Ask about admin role with inline buttons
-                    buttons = InlineKeyboardMarkup([
+                    buttons = [
                         [
-                            InlineKeyboardButton(text="✅ Yes, I want to be full admin", data=b"admin_role:yes"),
-                            InlineKeyboardButton(text="❌ No, just regular member", data=b"admin_role:no")
+                            Button.inline("✅ Yes, I want to be full admin", b"admin_role:yes"),
+                            Button.inline("❌ No, just regular member", b"admin_role:no"),
                         ]
-                    ])
+                    ]
                     
                     await event.respond(
                         f"{response}\n\n" +
