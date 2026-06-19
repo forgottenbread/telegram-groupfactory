@@ -28,6 +28,12 @@ spec:
       - name: groupfactory
         image: registry.example.com/groupfactory:latest
         imagePullPolicy: IfNotPresent
+        workingDir: /app
+        command:
+        - python
+        args:
+        - -m
+        - src.main
         ports:
         - name: http
           containerPort: 8000
