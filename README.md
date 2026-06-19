@@ -1,3 +1,9 @@
+<!-- gitea-mirror-notice:start -->
+> [!IMPORTANT]
+> **This GitHub repository is a mirror.**  
+> The canonical public repository is [https://git.mulas.me/corrado/telegram-groupfactory](https://git.mulas.me/corrado/telegram-groupfactory).
+<!-- gitea-mirror-notice:end -->
+
 # telegram-groupfactory
 
 A Telegram user API service for managing groups with MongoDB backend and admin-only configuration.
@@ -67,6 +73,28 @@ To run with Docker:
 ```bash
 docker build -t telegram-groupfactory .
 docker run telegram-groupfactory
+```
+
+## REST API
+
+The userbot also exposes an internal FastAPI surface on `API_HOST:API_PORT`
+for the separate conventional Telegram bot. Requests require `X-API-Key`.
+
+Relevant bot-facing endpoints:
+
+```text
+POST   /api/groups
+GET    /api/admin/default-users
+PUT    /api/admin/default-users
+POST   /api/admin/default-users
+DELETE /api/admin/default-users
+GET    /api/admin/qr-backup?qr_group=default
+PUT    /api/admin/qr-backup
+POST   /api/admin/qr-backup/image
+GET    /api/admin/qr-groups
+POST   /api/admin/qr-groups/{qr_group}/assignments
+DELETE /api/admin/qr-groups/assignments
+POST   /api/admin/qr-sync
 ```
 
 ## Documentation

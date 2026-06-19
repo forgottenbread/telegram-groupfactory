@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -25,8 +25,17 @@ class AddUsersToGroupRequest(BaseModel):
 
 
 class UserIdsRequest(BaseModel):
-    user_ids: List[int] = Field(..., min_items=1)
+    user_ids: List[Union[int, str]] = Field(..., min_items=1)
 
 
 class QrBackupRequest(BaseModel):
     qr_data: str = Field(..., min_length=1)
+    qr_group: Optional[str] = None
+
+
+class QrGroupAssignmentRequest(BaseModel):
+    group_ids: List[Union[int, str]] = Field(..., min_items=1)
+
+
+class QrSyncRequest(BaseModel):
+    qr_group: str = "default"

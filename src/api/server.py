@@ -28,6 +28,7 @@ def create_app(
     app.state.user_handler = user_handler
     app.state.group_handler = group_handler
     app.state.admin_handler = admin_handler
+    app.state.api_background_tasks = {"grouphelp_qr_sync": None}
 
     @app.get("/health", tags=["meta"])
     async def health():
