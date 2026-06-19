@@ -57,7 +57,7 @@ The application follows a modular architecture with the following components:
 
 3. Run the application:
    ```bash
-   python src/main.py
+   python -m src.main
    ```
 
 ## Docker
